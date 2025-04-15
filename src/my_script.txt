@@ -1,0 +1,13 @@
+# My example script for Study Group Manager
+
+info
+update 2
+remove_by_id 2
+show
+remove_by_id 1
+history
+print_ascending
+print_field_ascending_group_admin
+clear
+save
+info
