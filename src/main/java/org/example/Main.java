@@ -4,29 +4,28 @@ package org.example;
 import org.example.commands.*;
 import org.example.managers.CollectionManager;
 import org.example.managers.FileManager;
-import org.example.utility.ConsoleReader; // Use ConsoleReader
+import org.example.utility.ConsoleReader;
 
-import java.util.*; // Need Map, HashMap, List, LinkedList, Scanner, NoSuchElementException
-
+import java.util.*;
 /**
  * Main application class. Sets up and runs the command loop.
  * Uses ConsoleReader for I/O and manages commands directly via a Map.
  */
 public class Main {
 
-    // Environment variable name for the data file
+
     public static final String ENV_VAR_NAME = "STUDY_GROUP_DATA_FILE";
 
     public static void main(String[] args) {
 
-        // Use try-with-resources for the main scanner
+
         try (Scanner mainScanner = new Scanner(System.in)) {
 
-            // Setup utilities
-            ConsoleReader console = new ConsoleReader(mainScanner); // <<< Main ConsoleReader
+
+            ConsoleReader console = new ConsoleReader(mainScanner);
             console.println("Starting Study Group Manager...");
 
-            // Get file path from environment variable
+
             String filePath = System.getenv(ENV_VAR_NAME);
             if (filePath == null || filePath.trim().isEmpty()) {
                 console.printError("Warning: Environment variable '" + ENV_VAR_NAME + "' not set.");
@@ -39,20 +38,19 @@ public class Main {
 
             // Setup core components
             FileManager fileManager = new FileManager(filePath, console);
-            CollectionManager collectionManager = new CollectionManager(fileManager, console); // Loads data
+            CollectionManager collectionManager = new CollectionManager(fileManager, console);
 
-            // Setup command processing
-            Map<String, Command> commandMap = new LinkedHashMap<>(); // Keep order for help
-            List<String> history = new LinkedList<>(); // Store command history
+
+            Map<String, Command> commandMap = new LinkedHashMap<>();
+            List<String> history = new LinkedList<>();
             final int HISTORY_SIZE = 12;
 
-            // --- Register all commands ---
-            // Pass dependencies needed by each command's constructor
-            commandMap.put("help", new HelpCommand(console, commandMap)); // Help needs map
+
+            commandMap.put("help", new HelpCommand(console, commandMap));
             commandMap.put("info", new InfoCommand(console, collectionManager));
             commandMap.put("show", new ShowCommand(console, collectionManager));
-            commandMap.put("add", new AddCommand(console, collectionManager)); // <<< Add only needs CollectionManager now
-            commandMap.put("update", new UpdateCommand(collectionManager)); // <<< Update only needs CollectionManager
+            commandMap.put("add", new AddCommand(console, collectionManager));
+            commandMap.put("update", new UpdateCommand(collectionManager));
             commandMap.put("remove_by_id", new RemoveByIdCommand(console, collectionManager));
             commandMap.put("clear", new ClearCommand(console, collectionManager));
             commandMap.put("save", new SaveCommand(collectionManager)); // <<< Save only needs CollectionManager
@@ -71,7 +69,7 @@ public class Main {
             // --- Main Command Loop ---
             boolean keepRunning = true;
             while (keepRunning) {
-                console.print("> "); // Prompt from main console
+                console.print("> ");
                 try {
                     if (!mainScanner.hasNextLine()) {
                         console.println("\nEnd of input detected. Exiting.");
@@ -96,8 +94,8 @@ public class Main {
                         }
                         history.add(commandName);
 
-                        // Execute the command, passing the MAIN console object
-                        keepRunning = command.execute(commandArgs, console); // <<< PASS MAIN CONSOLE
+
+                        keepRunning = command.execute(commandArgs, console);
 
                     } else {
                         console.printError("Unknown command: '" + commandName + "'. Type 'help'.");
@@ -110,10 +108,10 @@ public class Main {
                     console.printError("A critical error occurred: " + e.getMessage());
                     e.printStackTrace();
                 }
-            } // --- End Command Loop ---
+            }
 
             console.println("Application finished.");
 
-        } // Scanner automatically closed
+        }
     }
 }
