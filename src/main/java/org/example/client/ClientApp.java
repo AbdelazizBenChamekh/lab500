@@ -26,16 +26,15 @@ public class ClientApp {
     private final String serverHost;
     private final int serverPort;
     private DatagramChannel channel;
-    private final ConsoleReader consoleReader; // For user interaction
+    private final ConsoleReader consoleReader;
     private Selector selector; // For non-blocking I/O
     private final List<String> history = new LinkedList<>(); // Client-side history
     private static final int HISTORY_SIZE = 12;
-    private final Set<String> scriptStack = new HashSet<>(); // For execute_script recursion check
+    private final Set<String> scriptStack = new HashSet<>();
 
     public ClientApp(String host, int port) {
         this.serverHost = host;
         this.serverPort = port;
-        // Client uses ConsoleReader linked to System.in for interaction
         this.consoleReader = new ConsoleReader(new Scanner(System.in));
     }
 
@@ -84,7 +83,7 @@ public class ClientApp {
 
                 if (commandName.equals("history")) {
                     handleHistory();
-                    continue; // Don't send history to server
+                    continue;
                 }
 
                 if (commandName.equals("execute_script")) {
@@ -92,8 +91,8 @@ public class ClientApp {
                         consoleReader.printError("Missing argument: script file name needed.");
                         continue;
                     }
-                    executeScript(argumentString); // Handle script execution locally
-                    continue; // Don't send execute_script command itself to server
+                    executeScript(argumentString);
+                    continue;
                 }
 
                 if (commandName.equals("save")) {
@@ -114,7 +113,7 @@ public class ClientApp {
                 addToHistory(commandName);
 
 
-                // Send request and process response
+
                 sendRequest(request);
                 processResponse();
 
@@ -149,7 +148,7 @@ public class ClientApp {
                 case "add_if_min":
                 case "remove_lower":
                     commandArgument = readStudyGroupInteractively("Enter details for the Study Group:");
-                    if (commandArgument == null) return null; // Input cancelled or failed
+                    if (commandArgument == null) return null;
                     break;
 
                 case "update":
@@ -201,31 +200,24 @@ public class ClientApp {
                     commandArgument = null;
                     break; // Argument remains null
 
-                // Commands handled entirely client-side (shouldn't reach here)
-                // case "exit":
-                // case "history":
-                // case "execute_script":
-                // case "save":
+
 
                 default:
-                    // If command wasn't handled above, assume it's unknown or server-side only with no specific client args needed.
-                    // Or, we could return null here to prevent sending unknown commands. Let's allow sending.
+
                     consoleReader.println("[Client Note] Sending command '" + commandName + "' with argument: " + (argumentString != null ? "'" + argumentString + "'" : "null"));
-                    commandArgument = argumentString; // Send the raw string arg if present, otherwise null
-                    // Server will ultimately decide if the command and argument are valid.
+                    commandArgument = argumentString;
                     break;
             }
 
-            // Construct the request
+
             return new Request(commandName, commandArgument);
 
         } catch (InputMismatchException | IllegalArgumentException e) {
-            // Catch data format, validation errors from ConsoleReader or parsing
             consoleReader.printError("Invalid data entered: " + e.getMessage());
             return null; // Failed to create request
         } catch (NoSuchElementException e) {
             consoleReader.printError("Input cancelled during object creation.");
-            return null; // Failed to create request
+            return null;
         }
     }
 
@@ -245,8 +237,7 @@ public class ClientApp {
         FormOfEducation form = consoleReader.readEnum("Choose Form of Education", FormOfEducation.class, false);
         Semester semester = consoleReader.readEnum("Choose Semester", Semester.class, true);
         Person admin = consoleReader.readPerson();
-        // Return a temporary object. Server handles final ID/Date.
-        // Use dummy ID 1 for constructor validation.
+
         return new StudyGroup(1, name, coords, studentsCount, shouldBeExpelled, form, semester, admin);
     }
 
@@ -254,7 +245,7 @@ public class ClientApp {
     private void addToHistory(String commandName) {
         if (commandName == null || commandName.trim().isEmpty()) return;
         if (history.size() >= HISTORY_SIZE) {
-            history.remove(0); // Remove oldest
+            history.remove(0);
         }
         history.add(commandName.toLowerCase());
     }
@@ -303,7 +294,7 @@ public class ClientApp {
                 String line = scriptScanner.nextLine().trim();
                 if (line.isEmpty() || line.startsWith("#")) continue;
 
-                consoleReader.println("Script> " + line); // Echo script line
+                consoleReader.println("Script> " + line);
 
                 // --- Process line as if typed by user ---
                 String[] parts = line.split("\\s+", 2);
@@ -323,7 +314,6 @@ public class ClientApp {
                 // Handle other client-side commands if necessary (exit, history, save shouldn't be needed here)
                 if (commandName.equals("exit")) {
                     consoleReader.printError("'exit' command encountered in script. Halting script execution.");
-                    // We don't exit the whole client, just this script
                     break; // Exit the script reading loop
                 }
                 if (commandName.equals("history")) {
@@ -341,11 +331,11 @@ public class ClientApp {
                 if (request != null) {
                     addToHistory(commandName); // Add script command to history
                     sendRequest(request);
-                    processResponse(); // Wait for and process response before next script line
+                    processResponse();
                 } else {
                     // parseAndPrepareRequest already printed an error
                     consoleReader.printError("Halting script due to error preparing request for command: " + commandName);
-                    break; // Stop script if request creation fails
+                    break;
                 }
             } // End while loop
 
@@ -394,7 +384,7 @@ public class ClientApp {
     private void processResponse() {
         try {
             // Clear previous selection results
-            selector.selectNow(); // Non-blocking check first (optional)
+            selector.selectNow();
 
             // Wait for channel to be ready or timeout
             consoleReader.print("Waiting for server response... ");
@@ -407,7 +397,7 @@ public class ClientApp {
             }
             consoleReader.println("Response received!"); // Print on same line if successful
 
-            // Get the keys for ready channels
+
             Iterator<SelectionKey> keyIterator = selector.selectedKeys().iterator();
 
             while (keyIterator.hasNext()) {
@@ -415,13 +405,12 @@ public class ClientApp {
 
                 if (key.isReadable()) {
                     ByteBuffer receiveBuffer = ByteBuffer.allocate(BUFFER_SIZE);
-                    // Receive data into the buffer
                     SocketAddress serverAddress = channel.receive(receiveBuffer);
 
                     if (serverAddress != null) {
                         receiveBuffer.flip(); // Prepare buffer for reading
                         byte[] data = new byte[receiveBuffer.limit()];
-                        receiveBuffer.get(data); // Copy data from buffer
+                        receiveBuffer.get(data);
 
                         // Deserialize
                         try (ByteArrayInputStream bis = new ByteArrayInputStream(data);
@@ -430,13 +419,12 @@ public class ClientApp {
                             displayResponse(response); // Display the deserialized response
                         } catch (IOException | ClassNotFoundException | ClassCastException e) {
                             consoleReader.printError("Failed to deserialize/process server response: " + e.getMessage());
-                            // e.printStackTrace(); // For debugging
                         }
                     } else {
                         consoleReader.printError("Received null address from server (channel closed?).");
                     }
                 }
-                keyIterator.remove(); // IMPORTANT: Remove key after processing
+                keyIterator.remove();
             }
         } catch (IOException e) {
             consoleReader.printError("Network error during response processing: " + e.getMessage());
@@ -446,9 +434,8 @@ public class ClientApp {
     /** Displays the received response based on StatusCode and responseBody type. */
     private void displayResponse(Response response) {
         consoleReader.println("\n<<< Server Response <<<"); // Changed delimiters
-        // System.out.println("DEBUG: " + response.toString()); // Optional raw debug
 
-        if (response.isSuccess()) { // Status is OK
+        if (response.isSuccess()) {
             Object body = response.getResponseBody();
             if (body instanceof String) {
                 // For commands returning simple messages or formatted strings (info, simple results)
@@ -461,19 +448,18 @@ public class ClientApp {
                 } else {
                     consoleReader.println("--- Result (" + results.size() + " items) ---");
                     for (Object item : results) {
-                        consoleReader.println("  " + item.toString()); // Use item's toString
+                        consoleReader.println("  " + item.toString());
                     }
                     consoleReader.println("----------------------");
                 }
             } else if (body != null) {
-                // Handle other potential Serializable return types if needed
                 consoleReader.println("Received data of type: " + body.getClass().getSimpleName());
                 consoleReader.println(body.toString()); // Default toString
             } else {
                 // OK status but no specific body (e.g., maybe for 'clear', 'add', 'remove')
                 consoleReader.println("(Operation completed successfully)");
             }
-        } else { // Status is ERROR or other failure code
+        } else {
             consoleReader.printError("Server reported error: " + response.getStatusCode());
             if (response.getErrorMessage() != null && !response.getErrorMessage().isEmpty()) {
                 consoleReader.printError("Message: " + response.getErrorMessage());
