@@ -1,7 +1,7 @@
 package org.example.commands;
-import org.example.managers.CollectionManager;
-import org.example.models.Person;
-import org.example.utility.ConsoleReader;
+import org.example.server.core.CollectionManager;
+import org.example.common.models.Person;
+import org.example.client.ConsoleReader;
 import java.util.List;
 
 /** PrintFieldAscendingGroupAdmin command: prints admins sorted by name. */

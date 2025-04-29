@@ -1,0 +1,4 @@
+Apr 29, 2025 6:10:49 PM org.example.server.ServerApp <clinit>
+INFO: Logger configured. Console logging level: INFO, File logging level: INFO to server_lab6.log
+Apr 29, 2025 6:41:08 PM org.example.server.ServerApp <clinit>
+INFO: Logger configured. Console logging level: INFO, File logging level: INFO to server_lab6.log

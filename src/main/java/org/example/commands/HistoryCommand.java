@@ -1,5 +1,5 @@
 package org.example.commands;
-import org.example.utility.ConsoleReader;
+import org.example.client.ConsoleReader;
 import java.util.List; // Need List
 
 /** History command: displays last N commands. */

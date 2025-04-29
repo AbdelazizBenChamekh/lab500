@@ -1,6 +1,6 @@
 package org.example.commands;
-import org.example.managers.CollectionManager;
-import org.example.utility.ConsoleReader;
+import org.example.server.core.CollectionManager;
+import org.example.client.ConsoleReader;
 
 /** RemoveById command: removes element matching the given ID. */
 public class RemoveByIdCommand implements Command {

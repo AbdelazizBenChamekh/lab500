@@ -1,7 +1,7 @@
 package org.example.commands;
-import org.example.managers.CollectionManager;
-import org.example.models.FormOfEducation;
-import org.example.utility.ConsoleReader;
+import org.example.server.core.CollectionManager;
+import org.example.common.models.FormOfEducation;
+import org.example.client.ConsoleReader;
 
 /** RemoveAnyByFormOfEducation command: removes one element matching the form. */
 public class RemoveAnyByFormOfEducationCommand implements Command {

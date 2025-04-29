@@ -1,9 +1,9 @@
 // File: src/main/java/org/example/commands/AddCommand.java
 package org.example.commands;
 
-import org.example.managers.CollectionManager;
-import org.example.models.*;
-import org.example.utility.ConsoleReader;
+import org.example.common.models.*;
+import org.example.server.core.CollectionManager;
+import org.example.client.ConsoleReader;
 
 import java.util.InputMismatchException;
 import java.util.NoSuchElementException;

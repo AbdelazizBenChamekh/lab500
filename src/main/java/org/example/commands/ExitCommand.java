@@ -1,6 +1,6 @@
 package org.example.commands;
 
-import org.example.utility.ConsoleReader;
+import org.example.client.ConsoleReader;
 
 /** Exit command: terminates the program. */
 public class ExitCommand implements Command {

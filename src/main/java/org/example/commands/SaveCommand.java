@@ -2,8 +2,8 @@
 package org.example.commands;
 
 
-import org.example.managers.CollectionManager;
-import org.example.utility.ConsoleReader;
+import org.example.server.core.CollectionManager;
+import org.example.client.ConsoleReader;
 
 /**
  * Save command: triggers saving the collection to file via CollectionManager.
