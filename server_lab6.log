@@ -2,3 +2,109 @@ Apr 29, 2025 6:10:49 PM org.example.server.ServerApp <clinit>
 INFO: Logger configured. Console logging level: INFO, File logging level: INFO to server_lab6.log
 Apr 29, 2025 6:41:08 PM org.example.server.ServerApp <clinit>
 INFO: Logger configured. Console logging level: INFO, File logging level: INFO to server_lab6.log
+Apr 29, 2025 8:12:13 PM org.example.server.ServerApp <clinit>
+INFO: Logger configured. Console logging level: INFO, File logging level: INFO to server_lab6.log
+May 09, 2025 2:56:48 AM org.example.server.ServerApp <clinit>
+INFO: Logger configured. Logging to console and file: server_lab6.log
+May 09, 2025 2:56:49 AM org.example.server.ServerApp main
+INFO: Using save file path from env var STUDY_GROUP_DATA_FILE: C:\Users\Mega-Pc\Desktop\programming\lab50\src\data.csv
+May 09, 2025 2:56:49 AM org.example.server.ServerApp initialize
+INFO: Initializing server components...
+May 09, 2025 2:56:49 AM org.example.server.network.RequestHandler <init>
+INFO: RequestHandler initialized with 11 server commands.
+May 09, 2025 2:56:49 AM org.example.server.ServerApp initialize
+INFO: Server components initialized successfully.
+May 09, 2025 2:56:49 AM org.example.server.ServerApp registerShutdownHook
+INFO: Shutdown hook registered.
+May 09, 2025 2:56:49 AM org.example.server.ServerApp startServer
+INFO: Starting server network listener...
+May 09, 2025 2:56:49 AM org.example.server.network.Server run
+INFO: Server socket created. Listening on UDP port: 12345
+May 09, 2025 2:58:01 AM org.example.server.network.Server run
+INFO: Received packet from 127.0.0.1:64650 (1415 bytes)
+May 09, 2025 2:58:01 AM org.example.server.network.RequestHandler handle
+INFO: Looking up command handler for: 'add'
+May 09, 2025 2:58:34 AM org.example.server.network.Server run
+INFO: Received packet from 127.0.0.1:64650 (137 bytes)
+May 09, 2025 2:58:34 AM org.example.server.network.RequestHandler handle
+INFO: Looking up command handler for: 'show'
+May 09, 2025 2:59:03 AM org.example.server.ServerApp lambda$registerShutdownHook$0
+INFO: Shutdown signal received.
+May 13, 2025 4:48:54 PM org.example.server.ServerApp <clinit>
+INFO: Logger configured. Logging to console and file: server_lab6.log
+May 13, 2025 4:48:54 PM org.example.server.ServerApp main
+INFO: Using save file path from env var STUDY_GROUP_DATA_FILE: C:\Users\Mega-Pc\Desktop\programming\lab50\src\data.csv
+May 13, 2025 4:48:54 PM org.example.server.ServerApp initialize
+INFO: Initializing server components...
+May 13, 2025 4:48:54 PM org.example.server.network.RequestHandler <init>
+INFO: RequestHandler initialized with 11 server commands.
+May 13, 2025 4:48:54 PM org.example.server.ServerApp initialize
+INFO: Server components initialized successfully.
+May 13, 2025 4:48:54 PM org.example.server.ServerApp registerShutdownHook
+INFO: Shutdown hook registered.
+May 13, 2025 4:48:54 PM org.example.server.ServerApp startServer
+INFO: Starting server network listener...
+May 13, 2025 4:48:54 PM org.example.server.network.Server run
+INFO: Server socket created. Listening on UDP port: 12345
+May 13, 2025 4:56:36 PM org.example.server.ServerApp lambda$registerShutdownHook$0
+INFO: Shutdown signal received.
+May 13, 2025 4:57:39 PM org.example.server.ServerApp <clinit>
+INFO: Logger configured. Logging to console and file: server_lab6.log
+May 13, 2025 4:57:39 PM org.example.server.ServerApp main
+INFO: Using save file path from env var STUDY_GROUP_DATA_FILE: C:\Users\Mega-Pc\Desktop\programming\lab50\src\data.csv
+May 13, 2025 4:57:39 PM org.example.server.ServerApp initialize
+INFO: Initializing server components...
+May 13, 2025 4:57:39 PM org.example.server.network.RequestHandler <init>
+INFO: RequestHandler initialized with 11 server commands.
+May 13, 2025 4:57:39 PM org.example.server.ServerApp initialize
+INFO: Server components initialized successfully.
+May 13, 2025 4:57:39 PM org.example.server.ServerApp registerShutdownHook
+INFO: Shutdown hook registered.
+May 13, 2025 4:57:39 PM org.example.server.ServerApp startServer
+INFO: Starting server network listener...
+May 13, 2025 4:57:39 PM org.example.server.network.Server run
+INFO: Server socket created. Listening on UDP port: 12345
+May 13, 2025 4:57:48 PM org.example.server.network.Server run
+INFO: Received packet from 127.0.0.1:51972 (137 bytes)
+May 13, 2025 4:57:48 PM org.example.server.network.RequestHandler handle
+INFO: Looking up command handler for: 'show'
+May 13, 2025 4:58:42 PM org.example.server.ServerApp lambda$registerShutdownHook$0
+INFO: Shutdown signal received.
+May 13, 2025 6:45:11 PM org.example.server.ServerApp <clinit>
+INFO: SERVER LOGGER configured. Console Level: INFO, File Level: FINE (logging to server_lab6.log)
+May 13, 2025 6:45:11 PM org.example.server.ServerApp main
+INFO: ServerApp main method started.
+May 13, 2025 6:45:11 PM org.example.server.ServerApp main
+INFO: No port argument provided. Using default port: 12345
+May 13, 2025 6:45:11 PM org.example.server.ServerApp main
+INFO: Using save file path from env var STUDY_GROUP_DATA_FILE: C:\Users\Mega-Pc\Desktop\programming\lab50\src\data.csv
+May 13, 2025 6:45:11 PM org.example.server.ServerApp initialize
+INFO: Initializing server components...
+May 13, 2025 6:45:11 PM org.example.server.core.CollectionManager <init>
+INFO: CollectionManager initializing...
+May 13, 2025 6:45:11 PM org.example.server.core.FileManager logInfo
+INFO: Loading collection from C:\Users\Mega-Pc\Desktop\programming\lab50\src\data.csv...
+May 13, 2025 6:45:11 PM org.example.server.core.FileManager logInfo
+INFO: Loaded 2 elements.
+May 13, 2025 6:45:11 PM org.example.server.core.CollectionManager <init>
+INFO: CollectionManager loaded 2 elements.
+May 13, 2025 6:45:11 PM org.example.server.network.RequestHandler <init>
+INFO: RequestHandler initialized with 11 server commands.
+May 13, 2025 6:45:11 PM org.example.server.ServerApp initialize
+INFO: Server components initialized successfully.
+May 13, 2025 6:45:11 PM org.example.server.ServerApp registerShutdownHook
+INFO: Shutdown hook registered.
+May 13, 2025 6:45:11 PM org.example.server.ServerApp startServer
+INFO: Starting server network listener...
+May 13, 2025 6:45:11 PM org.example.server.network.Server run
+INFO: Server socket created. Listening on UDP port: 12345
+May 13, 2025 6:45:41 PM org.example.server.network.Server run
+INFO: Received packet from 127.0.0.1:57924 (137 bytes)
+May 13, 2025 6:45:41 PM org.example.server.network.RequestHandler handle
+INFO: Handling request for command: 'show'
+May 13, 2025 6:46:24 PM org.example.server.network.Server run
+INFO: Received packet from 127.0.0.1:57924 (137 bytes)
+May 13, 2025 6:46:24 PM org.example.server.network.RequestHandler handle
+INFO: Handling request for command: 'info'
+May 13, 2025 6:46:47 PM org.example.server.ServerApp lambda$registerShutdownHook$0
+INFO: Shutdown signal received by ServerApp.

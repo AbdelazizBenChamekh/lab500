@@ -14,8 +14,6 @@ public enum StatusCode implements Serializable {
     ERROR,
     /** The requested resource (e.g., element by ID) was not found. */
     ERROR_NOT_FOUND,
-    /** The arguments provided in the request were invalid or failed validation. */
-    ERROR_ARGUMENT,
     /** An unexpected internal error occurred on the server. */
     ERROR_SERVER,
     /** The command name sent by the client is not recognized by the server. */

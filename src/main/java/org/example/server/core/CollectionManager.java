@@ -1,51 +1,39 @@
 package org.example.server.core;
 
-import org.example.common.models.FormOfEducation;
-import org.example.common.models.Person;
-import org.example.common.models.StudyGroup;
-
-import org.example.client.ConsoleReader;
+import org.example.common.models.*;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-/**
- * Manages the main collection of StudyGroup objects (LinkedHashSet) on the server.
- * Handles operations like add, update, remove, clear, info, etc.
- * Uses Stream API for collection processing **
- */
 public class CollectionManager {
     private LinkedHashSet<StudyGroup> studyGroups;
     private final FileManager fileManager;
     private final LocalDateTime initializationTime;
-    private final ConsoleReader console;
+    private final Logger logger;
 
-    /**
-     * Constructor. Loads the collection using FileManager.
-     */
-    public CollectionManager(FileManager fileManager, ConsoleReader console) {
+    public CollectionManager(FileManager fileManager, Logger logger) {
         this.fileManager = fileManager;
-        this.console = console;
+        this.logger = logger;
         this.initializationTime = LocalDateTime.now();
+        if (this.logger != null) logger.info("CollectionManager initializing...");
         this.studyGroups = fileManager.loadCollection();
-        console.println("CollectionManager initialized. Loaded " + studyGroups.size() + " elements.");
+        if (this.logger != null && this.studyGroups != null) logger.info("CollectionManager loaded " + this.studyGroups.size() + " elements.");
     }
 
-    /** Returns an unmodifiable view of the collection instance. */
-    public Set<StudyGroup> getCollection() {
-        return Collections.unmodifiableSet(studyGroups);
+    public LinkedHashSet<StudyGroup> getCollection() {
+        return studyGroups;
     }
 
-    /** Gets basic info about the collection. */
     public String getInfo() {
-        return "Collection Type: " + studyGroups.getClass().getSimpleName() + "\n" +
+        return "Collection Type: LinkedHashSet<StudyGroup>\n" +
                 "Initialization Date: " + initializationTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")) + "\n" +
                 "Number of Elements: " + studyGroups.size();
     }
 
-    /** Adds a new element with a generated ID. */
     public void addElement(StudyGroup groupData) {
         try {
             int newId = IdGenerator.generateId();
@@ -53,169 +41,119 @@ public class CollectionManager {
                     newId, groupData.getName(), groupData.getCoordinates(),
                     groupData.getStudentsCount(), groupData.getShouldBeExpelled(),
                     groupData.getFormOfEducation(), groupData.getSemesterEnum(),
-                    groupData.getGroupAdmin());
+                    groupData.getGroupAdmin()
+            );
             if (studyGroups.add(newGroup)) {
-                console.println("Element added with ID: " + newId);
+                if (logger != null) logger.info("Added element ID: " + newId + " to collection. New size: " + studyGroups.size());
             } else {
-                console.printError("INTERNAL ERROR: Failed to add element with presumably unique ID " + newId);
+                if (logger != null) logger.warning("Element with ID " + newId + " could not be added (likely duplicate). Size: " + studyGroups.size());
             }
         } catch (IllegalArgumentException e) {
-            console.printError("Failed to add element due to validation error: " + e.getMessage());
+            if (logger != null) logger.log(Level.SEVERE, "Failed to add element due to invalid data: " + e.getMessage(), e);
         }
     }
 
-    /** Finds an element by ID using Stream API. Returns null if not found. */
     public StudyGroup findById(int id) {
-        return studyGroups.stream()
-                .filter(group -> group.getId() == id)
-                .findFirst() // Find the first match
-                .orElse(null);
+        return studyGroups.stream().filter(g -> g.getId() == id).findFirst().orElse(null);
     }
 
-    /** Updates an existing element, preserving ID and creation date. */
-    public boolean updateElement(int id, StudyGroup updatedData) {
-        Optional<StudyGroup> existingOpt = studyGroups.stream()
-                .filter(group -> group.getId() == id)
-                .findFirst();
-
-        if (existingOpt.isPresent()) {
-            StudyGroup existingGroup = existingOpt.get();
-            try {
-                StudyGroup updatedGroup = new StudyGroup(
-                        existingGroup.getId(), updatedData.getName(), updatedData.getCoordinates(),
-                        existingGroup.getCreationDate(), // Keep original date
-                        updatedData.getStudentsCount(), updatedData.getShouldBeExpelled(),
-                        updatedData.getFormOfEducation(), updatedData.getSemesterEnum(),
-                        updatedData.getGroupAdmin());
-
-                // Standard Set update: remove old, add new
-                studyGroups.remove(existingGroup); // remove uses equals() based on ID
-                studyGroups.add(updatedGroup);
-                console.println("Element ID " + id + " updated.");
-                return true;
-            } catch (IllegalArgumentException e) {
-                console.printError("Update failed for ID " + id + " (validation): " + e.getMessage());
-                // Add the original back? Or assume client will retry? Let's keep it removed for now.
-                return false;
-            }
-        } else {
-            // console.printError("Update failed: Element with ID " + id + " not found."); // RequestHandler handles response
-            return false; // Indicate not found
+    public boolean updateElement(int id, StudyGroup updatedDataFromClient) {
+        StudyGroup existingGroup = findById(id);
+        if (existingGroup == null) {
+            if (logger != null) logger.warning("Update failed: Element with ID " + id + " not found.");
+            return false;
+        }
+        try {
+            StudyGroup updatedGroup = new StudyGroup(
+                    existingGroup.getId(),
+                    updatedDataFromClient.getName(),
+                    updatedDataFromClient.getCoordinates(),
+                    existingGroup.getCreationDate(),
+                    updatedDataFromClient.getStudentsCount(),
+                    updatedDataFromClient.getShouldBeExpelled(),
+                    updatedDataFromClient.getFormOfEducation(),
+                    updatedDataFromClient.getSemesterEnum(),
+                    updatedDataFromClient.getGroupAdmin()
+            );
+            studyGroups.remove(existingGroup);
+            studyGroups.add(updatedGroup);
+            if (logger != null) logger.info("Element ID " + id + " updated successfully.");
+            return true;
+        } catch (IllegalArgumentException e) {
+            if (logger != null) logger.log(Level.SEVERE, "Update failed for ID " + id + ": Invalid data. " + e.getMessage(), e);
+            return false;
         }
     }
 
-    /** Removes an element by ID using Stream API's removeIf. */
     public boolean removeById(int id) {
         boolean removed = studyGroups.removeIf(group -> group.getId() == id);
-        if (removed) {
-            console.println("Element ID " + id + " removed by removeById.");
-        }
+        if (removed && logger != null) logger.info("Element ID " + id + " removed. New size: " + studyGroups.size());
+        else if (!removed && logger != null) logger.warning("Remove failed: Element ID " + id + " not found.");
         return removed;
     }
 
-    /** Clears the collection. */
     public void clearCollection() {
         studyGroups.clear();
-        console.println("Collection cleared.");
+        if (logger != null) logger.info("Collection cleared. New size: 0");
     }
 
-    /** Saves the collection using FileManager. */
     public void saveCollection() {
-        fileManager.saveCollection(studyGroups);
+        if (logger != null) logger.info("Saving collection to file via FileManager...");
+        fileManager.saveCollection(this.studyGroups);
     }
 
-    /** Adds element if it's smaller than the minimum (natural order - ID). */
-    public boolean addIfMin(StudyGroup candidateData) {
-        // Find min using Stream API
-        Optional<StudyGroup> minElementOpt = studyGroups.stream()
-                .min(StudyGroup::compareTo);
-
-
-        try {
-            StudyGroup conceptualCandidate = new StudyGroup(
-                    1, candidateData.getName(), candidateData.getCoordinates(), // Dummy ID
-                    candidateData.getStudentsCount(), candidateData.getShouldBeExpelled(),
-                    candidateData.getFormOfEducation(), candidateData.getSemesterEnum(),
-                    candidateData.getGroupAdmin());
-
-            if (minElementOpt.isEmpty() || conceptualCandidate.compareTo(minElementOpt.get()) < 0) {
-
-                console.println("addIfMin: Condition met. Adding element.");
-                addElement(candidateData); // Use the actual addElement method
-                return true;
-            } else {
-                console.println("addIfMin: Condition not met (element not smaller or collection not empty).");
-                return false;
-            }
-        } catch (IllegalArgumentException e) {
-            console.printError("addIfMin: Cannot process candidate due to validation error: " + e.getMessage());
-            return false;
-        }
-    }
-
-    /** Removes elements smaller than the threshold (natural order - ID) using Stream API. */
-    public int removeLower(StudyGroup thresholdData) {
-        try {
-            // Create conceptual threshold (ID doesn't matter here)
-            StudyGroup threshold = new StudyGroup(
-                    1, thresholdData.getName(), thresholdData.getCoordinates(), // Dummy ID
-                    thresholdData.getStudentsCount(), thresholdData.getShouldBeExpelled(),
-                    thresholdData.getFormOfEducation(), thresholdData.getSemesterEnum(),
-                    thresholdData.getGroupAdmin());
-
-            // Use removeIf with lambda
-            int initialSize = studyGroups.size();
-            boolean removed = studyGroups.removeIf(group -> group.compareTo(threshold) < 0);
-            int removedCount = initialSize - studyGroups.size();
-
-            console.println("removeLower: Removed " + removedCount + " elements.");
-            return removedCount;
-
-        } catch (IllegalArgumentException e) {
-            console.printError("removeLower: Cannot process threshold due to validation error: " + e.getMessage());
-            return 0;
-        }
-    }
-
-    /** Removes one element matching the FormOfEducation using Stream API. */
-    public boolean removeAnyByFormOfEducation(FormOfEducation form) {
-        // Find first matching element
-        Optional<StudyGroup> toRemoveOpt = studyGroups.stream()
-                .filter(group -> group.getFormOfEducation() == form)
-                .findFirst();
-
-        if (toRemoveOpt.isPresent()) {
-            studyGroups.remove(toRemoveOpt.get()); // Remove the found element
-            console.println("Removed one element with form: " + form);
-            return true;
-        } else {
-            console.println("No element found with form: " + form);
-            return false;
-        }
-    }
-
-    // --- Methods returning Lists (used by RequestHandler) ---
-
-    /** Gets a list of elements sorted by natural order (ID) using Stream API. */
-    public List<StudyGroup> getSortedElements() {
-        return studyGroups.stream()
-                .sorted() // Uses StudyGroup::compareTo (by ID)
+    public List<StudyGroup> getAllGroupsSortedBySize() {
+        return this.studyGroups.stream()
+                .sorted(Comparator.comparingLong(StudyGroup::getStudentsCount))
                 .collect(Collectors.toList());
     }
 
-    /** Gets a list of elements sorted by student count using Stream API. */
-    public List<StudyGroup> getElementsByStudentCount() {
-        return studyGroups.stream()
-                .sorted(Comparator.comparingLong(StudyGroup::getStudentsCount)) // Sort by specific field
+    public List<StudyGroup> getAllGroupsSortedById() {
+        return this.studyGroups.stream()
+                .sorted()
                 .collect(Collectors.toList());
     }
 
-    /** Gets a list of group admins sorted by natural order (name) using Stream API. */
     public List<Person> getSortedGroupAdmins() {
         return studyGroups.stream()
                 .map(StudyGroup::getGroupAdmin)
                 .filter(Objects::nonNull)
                 .sorted()
                 .collect(Collectors.toList());
+    }
+
+    public long removeLower(StudyGroup threshold) {
+        long initialSize = studyGroups.size();
+        studyGroups = studyGroups.stream()
+                .filter(group -> group.compareTo(threshold) >= 0)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        long removedCount = initialSize - studyGroups.size();
+        if (logger != null) logger.info("remove_lower executed. Removed " + removedCount + " elements. New size: " + studyGroups.size());
+        return removedCount;
+    }
+
+    public boolean addIfMin(StudyGroup candidate) {
+        Optional<StudyGroup> minElementOpt = studyGroups.stream().min(StudyGroup::compareTo);
+        if (minElementOpt.isEmpty()) {
+            addElement(candidate);
+            if (logger != null) logger.info("add_if_min: Collection was empty, element added.");
+            return true;
+        } else {
+            if (logger != null) logger.info("add_if_min: Element not added (not smaller than min or collection not empty). Candidate ID would be new, min ID: " + minElementOpt.get().getId());
+            return false;
+        }
+    }
+
+    public boolean removeAnyByFormOfEducation(FormOfEducation form) {
+        Optional<StudyGroup> toRemove = studyGroups.stream()
+                .filter(group -> group.getFormOfEducation() == form)
+                .findFirst();
+        if (toRemove.isPresent()) {
+            studyGroups.remove(toRemove.get());
+            if (logger != null) logger.info("remove_any_by_form_of_education: Removed one element with form " + form + ". New size: " + studyGroups.size());
+            return true;
+        }
+        if (logger != null) logger.info("remove_any_by_form_of_education: No element found with form " + form);
+        return false;
     }
 }
