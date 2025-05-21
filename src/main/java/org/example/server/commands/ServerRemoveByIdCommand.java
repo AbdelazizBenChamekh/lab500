@@ -3,38 +3,40 @@ package org.example.server.commands;
 import org.example.common.network.Request;
 import org.example.common.network.Response;
 import org.example.common.network.StatusCode;
+import org.example.server.exceptions.IllegalArguments;
 import org.example.server.core.CollectionManager;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
-public class ServerRemoveByIdCommand implements ServerCommand {
+/**
+ * Command 'remove_by_id'
+ * Removes an element from a collection by its id
+ */
+public class ServerRemoveByIdCommand extends Command implements CollectionEditor{
+    private final CollectionManager collectionManager;
+
+    public ServerRemoveByIdCommand(CollectionManager collectionManager) {
+        super("remove_by_id", " id: удалить элемент из коллекции по его id");
+        this.collectionManager = collectionManager;
+    }
+
+    /**
+     * Execute command
+     * @param request command arguments
+     * @throws IllegalArguments invalid command arguments
+     */
     @Override
-    public Response execute(Request request, CollectionManager collectionManager, Logger logger) {
-        logger.log(Level.FINE, "Executing 'remove_by_id'.");
-        Object argument = request.getArgument();
-
-        if (!(argument instanceof Integer)) {
-            logger.log(Level.WARNING, "Invalid argument type for 'remove_by_id'. Expected Integer ID.");
-            return Response.error(StatusCode.ERROR, "Argument must be an Integer ID for remove_by_id.");
+    public Response execute(Request request) throws IllegalArguments{
+        if (request.getArgs().isBlank()) throw new IllegalArguments();
+        class NoSuchId extends RuntimeException {
         }
-        int idToRemove = (Integer) argument;
-
-        if (idToRemove <= 0) {
-            logger.log(Level.WARNING, "Invalid ID for 'remove_by_id': " + idToRemove);
-            return Response.error(StatusCode.ERROR, "ID must be positive for remove_by_id.");
-        }
-
         try {
-            if (collectionManager.removeById(idToRemove)) {
-                return Response.success("Element ID " + idToRemove + " removed.");
-            } else {
-                // ID not found is not necessarily a server *error*, but the operation failed.
-                logger.log(Level.INFO, "'remove_by_id': ID " + idToRemove + " not found.");
-                return Response.error(StatusCode.ERROR, "Element ID " + idToRemove + " not found."); // Use ERROR status
-            }
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "Error executing 'remove_by_id': " + e.getMessage(), e);
-            return Response.error(StatusCode.ERROR_SERVER, "Internal server error removing element.");
+            int id = Integer.parseInt(request.getArgs().trim());
+            if (!collectionManager.checkExist(id)) throw new NoSuchId();
+            collectionManager.removeElement(collectionManager.getById(id));
+            return new Response(StatusCode.OK,"Объект удален успешно");
+        } catch (NoSuchId err) {
+            return new Response(StatusCode.ERROR,"В коллекции нет элемента с таким id");
+        } catch (NumberFormatException exception) {
+            return new Response(StatusCode.WRONG_ARGUMENTS,"id должно быть числом типа int");
         }
     }
 }

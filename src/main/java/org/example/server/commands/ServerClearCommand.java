@@ -1,28 +1,32 @@
-// File: src/main/java/org/example/server/commands/ServerClearCommand.java
 package org.example.server.commands;
 
 import org.example.common.network.Request;
 import org.example.common.network.Response;
 import org.example.common.network.StatusCode;
+import org.example.server.exceptions.IllegalArguments;
 import org.example.server.core.CollectionManager;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
-public class ServerClearCommand implements ServerCommand {
+/**
+ * Command 'clear'
+ * Clears the collection
+ */
+public class ServerClearCommand extends Command implements CollectionEditor{
+    private CollectionManager collectionManager;
+
+    public ServerClearCommand(CollectionManager collectionManager) {
+        super("clear", ": очистить коллекцию");
+        this.collectionManager = collectionManager;
+    }
+
+    /**
+     * Execute command
+     * @param request command arguments
+     * @throws IllegalArguments invalid command arguments
+     */
     @Override
-    public Response execute(Request request, CollectionManager collectionManager, Logger logger) {
-        logger.log(Level.FINE, "Executing 'clear' command.");
-        // No arguments expected for clear
-        if (request.getArgument() != null) {
-            logger.log(Level.WARNING, "'clear' command received with unexpected argument.");
-            // Optionally ignore argument or return error. Let's ignore for now.
-        }
-        try {
-            collectionManager.clearCollection();
-            return Response.success("Collection cleared successfully.");
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "Error executing 'clear': " + e.getMessage(), e);
-            return Response.error(StatusCode.ERROR_SERVER, "Internal server error while clearing collection.");
-        }
+    public Response execute(Request request) throws IllegalArguments {
+        if (!request.getArgs().isBlank()) throw new IllegalArguments();
+        collectionManager.clear();
+        return new Response(StatusCode.OK,"Элементы удалены");
     }
 }

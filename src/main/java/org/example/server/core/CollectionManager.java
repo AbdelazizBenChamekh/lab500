@@ -1,159 +1,247 @@
 package org.example.server.core;
 
-import org.example.common.models.*;
+import org.example.common.models.FormOfEducation;
+import org.example.common.models.Person;
+import org.example.server.exceptions.InvalidForm;
+import org.example.common.models.StudyGroup;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
+/**
+ * Class that manages the collection.
+ */
 public class CollectionManager {
-    private LinkedHashSet<StudyGroup> studyGroups;
-    private final FileManager fileManager;
-    private final LocalDateTime initializationTime;
-    private final Logger logger;
+    private final ArrayDeque<StudyGroup> collection = new ArrayDeque<>();
+    private static int nextId = 0;
+    /**
+     * Collection creation date
+     */
+    private LocalDateTime lastInitTime;
+    /**
+     * Last modification date of the collection
+     */
+    private LocalDateTime lastSaveTime;
 
-    public CollectionManager(FileManager fileManager, Logger logger) {
-        this.fileManager = fileManager;
-        this.logger = logger;
-        this.initializationTime = LocalDateTime.now();
-        if (this.logger != null) logger.info("CollectionManager initializing...");
-        this.studyGroups = fileManager.loadCollection();
-        if (this.logger != null && this.studyGroups != null) logger.info("CollectionManager loaded " + this.studyGroups.size() + " elements.");
+    private static final Logger collectionManagerLogger = Logger.getLogger(CollectionManager.class.getName());
+
+    public CollectionManager() {
+        this.lastInitTime = LocalDateTime.now();
+        this.lastSaveTime = null;
     }
 
-    public LinkedHashSet<StudyGroup> getCollection() {
-        return studyGroups;
+    public ArrayDeque<StudyGroup> getCollection() {
+        return collection;
     }
 
-    public String getInfo() {
-        return "Collection Type: LinkedHashSet<StudyGroup>\n" +
-                "Initialization Date: " + initializationTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")) + "\n" +
-                "Number of Elements: " + studyGroups.size();
-    }
-
-    public void addElement(StudyGroup groupData) {
-        try {
-            int newId = IdGenerator.generateId();
-            StudyGroup newGroup = new StudyGroup(
-                    newId, groupData.getName(), groupData.getCoordinates(),
-                    groupData.getStudentsCount(), groupData.getShouldBeExpelled(),
-                    groupData.getFormOfEducation(), groupData.getSemesterEnum(),
-                    groupData.getGroupAdmin()
-            );
-            if (studyGroups.add(newGroup)) {
-                if (logger != null) logger.info("Added element ID: " + newId + " to collection. New size: " + studyGroups.size());
-            } else {
-                if (logger != null) logger.warning("Element with ID " + newId + " could not be added (likely duplicate). Size: " + studyGroups.size());
-            }
-        } catch (IllegalArgumentException e) {
-            if (logger != null) logger.log(Level.SEVERE, "Failed to add element due to invalid data: " + e.getMessage(), e);
-        }
-    }
-
-    public StudyGroup findById(int id) {
-        return studyGroups.stream().filter(g -> g.getId() == id).findFirst().orElse(null);
-    }
-
-    public boolean updateElement(int id, StudyGroup updatedDataFromClient) {
-        StudyGroup existingGroup = findById(id);
-        if (existingGroup == null) {
-            if (logger != null) logger.warning("Update failed: Element with ID " + id + " not found.");
-            return false;
-        }
-        try {
-            StudyGroup updatedGroup = new StudyGroup(
-                    existingGroup.getId(),
-                    updatedDataFromClient.getName(),
-                    updatedDataFromClient.getCoordinates(),
-                    existingGroup.getCreationDate(),
-                    updatedDataFromClient.getStudentsCount(),
-                    updatedDataFromClient.getShouldBeExpelled(),
-                    updatedDataFromClient.getFormOfEducation(),
-                    updatedDataFromClient.getSemesterEnum(),
-                    updatedDataFromClient.getGroupAdmin()
-            );
-            studyGroups.remove(existingGroup);
-            studyGroups.add(updatedGroup);
-            if (logger != null) logger.info("Element ID " + id + " updated successfully.");
-            return true;
-        } catch (IllegalArgumentException e) {
-            if (logger != null) logger.log(Level.SEVERE, "Update failed for ID " + id + ": Invalid data. " + e.getMessage(), e);
-            return false;
-        }
-    }
-
-    public boolean removeById(int id) {
-        boolean removed = studyGroups.removeIf(group -> group.getId() == id);
-        if (removed && logger != null) logger.info("Element ID " + id + " removed. New size: " + studyGroups.size());
-        else if (!removed && logger != null) logger.warning("Remove failed: Element ID " + id + " not found.");
-        return removed;
-    }
-
-    public void clearCollection() {
-        studyGroups.clear();
-        if (logger != null) logger.info("Collection cleared. New size: 0");
-    }
-
-    public void saveCollection() {
-        if (logger != null) logger.info("Saving collection to file via FileManager...");
-        fileManager.saveCollection(this.studyGroups);
-    }
-
-    public List<StudyGroup> getAllGroupsSortedBySize() {
-        return this.studyGroups.stream()
-                .sorted(Comparator.comparingLong(StudyGroup::getStudentsCount))
-                .collect(Collectors.toList());
-    }
-
-    public List<StudyGroup> getAllGroupsSortedById() {
-        return this.studyGroups.stream()
-                .sorted()
-                .collect(Collectors.toList());
-    }
-
-    public List<Person> getSortedGroupAdmins() {
-        return studyGroups.stream()
-                .map(StudyGroup::getGroupAdmin)
+    public static void updateId(Collection<StudyGroup> collection) {
+        nextId = collection.stream()
                 .filter(Objects::nonNull)
-                .sorted()
-                .collect(Collectors.toList());
+                .map(StudyGroup::getId)
+                .max(Integer::compareTo)
+                .orElse(0);
+        collectionManagerLogger.info("ID updated to " + nextId);
     }
 
+    public static int getNextId() {
+        return ++nextId;
+    }
+
+    /**
+     * Formats the date, hiding the date if it's today
+     * @param localDateTime LocalDateTime object
+     * @return formatted date string
+     */
+    public static String timeFormatter(LocalDateTime localDateTime) {
+        if (localDateTime == null) return null;
+        if (localDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                .equals(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")))) {
+            return localDateTime.format(DateTimeFormatter.ofPattern("HH:mm:ss"));
+        }
+        return localDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+    }
+
+    /**
+     * Formats the date, hiding the date if it's today
+     * @param dateToConvert Date object
+     * @return formatted date string
+     */
+    public static String timeFormatter(Date dateToConvert) {
+        LocalDateTime localDateTime = dateToConvert.toInstant()
+                .atZone(ZoneId.systemDefault())
+                .toLocalDateTime();
+        if (localDateTime == null) return null;
+        if (localDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
+                .equals(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")))) {
+            return localDateTime.format(DateTimeFormatter.ofPattern("HH:mm:ss"));
+        }
+        return localDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+    }
+
+    public String getLastInitTime() {
+        return timeFormatter(lastInitTime);
+    }
+
+    public String getLastSaveTime() {
+        return timeFormatter(lastSaveTime);
+    }
+
+    /**
+     * @return The type name of the collection.
+     */
+    public String collectionType() {
+        return collection.getClass().getName();
+    }
+
+    public int collectionSize() {
+        return collection.size();
+    }
+
+    public void clear() {
+        this.collection.clear();
+        lastInitTime = LocalDateTime.now();
+        collectionManagerLogger.info("Collection cleared");
+    }
+
+    public StudyGroup getLast() {
+        return collection.getLast();
+    }
+
+    /**
+     * @param id Element ID.
+     * @return The element by its ID, or null if not found.
+     */
+    public StudyGroup getById(int id) {
+        for (StudyGroup element : collection) {
+            if (element.getId() == id) return element;
+        }
+        return null;
+    }
+
+    /**
+     * Edit the collection element with the given id
+     * @param id id
+     * @param newElement new element
+     * @throws InvalidForm No element with such id
+     */
+    public void editById(int id, StudyGroup newElement) {
+        StudyGroup pastElement = this.getById(id);
+        this.removeElement(pastElement);
+        newElement.setId(id);
+        this.addElement(newElement);
+        collectionManagerLogger.info("Object with id " + id + " edited: " + newElement);
+    }
+
+    /**
+     * @param id Element ID.
+     * @return Checks if an element with such ID exists.
+     */
+    public boolean checkExist(int id) {
+        return collection.stream()
+                .anyMatch((x) -> x.getId() == id);
+    }
+    /**
+     * Adds the given StudyGroup to the collection if it is less than the current minimum element.
+     * @param candidate the StudyGroup to add
+     * @return true if the element was added, false otherwise
+     * @throws IllegalArgumentException if candidate is null
+     */
+    public boolean addIfMin(StudyGroup candidate) {
+        if (candidate == null) {
+            throw new IllegalArgumentException("Candidate StudyGroup cannot be null");
+        }
+
+        if (collection.isEmpty()) {
+            addElement(candidate);
+            return true;
+        }
+
+        StudyGroup minElement = collection.stream()
+                .min(StudyGroup::compareTo)  // assumes StudyGroup implements Comparable<StudyGroup>
+                .orElse(null);
+
+        if (minElement == null || candidate.compareTo(minElement) < 0) {
+            addElement(candidate);
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Removes all elements smaller than the given threshold.
+     * @param threshold the StudyGroup threshold
+     * @return the number of elements removed
+     * @throws IllegalArgumentException if threshold is null
+     */
     public long removeLower(StudyGroup threshold) {
-        long initialSize = studyGroups.size();
-        studyGroups = studyGroups.stream()
-                .filter(group -> group.compareTo(threshold) >= 0)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        long removedCount = initialSize - studyGroups.size();
-        if (logger != null) logger.info("remove_lower executed. Removed " + removedCount + " elements. New size: " + studyGroups.size());
+        if (threshold == null) {
+            throw new IllegalArgumentException("Threshold StudyGroup cannot be null");
+        }
+
+        long initialSize = collection.size();
+        collection.removeIf(element -> element.compareTo(threshold) < 0);
+        long removedCount = initialSize - collection.size();
+
+        collectionManagerLogger.info("Removed " + removedCount + " elements smaller than threshold: " + threshold);
+        lastSaveTime = LocalDateTime.now();
+
         return removedCount;
     }
 
-    public boolean addIfMin(StudyGroup candidate) {
-        Optional<StudyGroup> minElementOpt = studyGroups.stream().min(StudyGroup::compareTo);
-        if (minElementOpt.isEmpty()) {
-            addElement(candidate);
-            if (logger != null) logger.info("add_if_min: Collection was empty, element added.");
-            return true;
-        } else {
-            if (logger != null) logger.info("add_if_min: Element not added (not smaller than min or collection not empty). Candidate ID would be new, min ID: " + minElementOpt.get().getId());
-            return false;
-        }
+
+    public void addElement(StudyGroup studyGroup) {
+        this.lastSaveTime = LocalDateTime.now();
+        collection.add(studyGroup);
+        collectionManagerLogger.info("Object added to collection: " + studyGroup);
+    }
+
+    public void removeElement(StudyGroup studyGroup) {
+        collection.remove(studyGroup);
+    }
+
+    public List<StudyGroup> getAllGroupsSortedById() {
+        return collection.stream()
+                .sorted(Comparator.comparingInt(StudyGroup::getId))
+                .collect(Collectors.toList());
     }
 
     public boolean removeAnyByFormOfEducation(FormOfEducation form) {
-        Optional<StudyGroup> toRemove = studyGroups.stream()
-                .filter(group -> group.getFormOfEducation() == form)
+        Optional<StudyGroup> toRemove = collection.stream()
+                .filter(sg -> sg.getFormOfEducation() == form)
                 .findFirst();
+
         if (toRemove.isPresent()) {
-            studyGroups.remove(toRemove.get());
-            if (logger != null) logger.info("remove_any_by_form_of_education: Removed one element with form " + form + ". New size: " + studyGroups.size());
+            collection.remove(toRemove.get());
             return true;
         }
-        if (logger != null) logger.info("remove_any_by_form_of_education: No element found with form " + form);
         return false;
+    }
+
+    public List<Person> getSortedGroupAdmins() {
+        return collection.stream()
+                .map(StudyGroup::getGroupAdmin)
+                .sorted(Comparator.comparing(Person::getName)) // or another field if needed
+                .collect(Collectors.toList());
+    }
+
+
+
+
+    @Override
+    public String toString() {
+        if (collection.isEmpty()) return "The collection is empty!";
+        var last = getLast();
+
+        StringBuilder info = new StringBuilder();
+        for (StudyGroup studyGroup : collection) {
+            info.append(studyGroup);
+            if (studyGroup != last) info.append("\n\n");
+        }
+        return info.toString();
     }
 }

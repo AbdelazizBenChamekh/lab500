@@ -1,135 +1,178 @@
 package org.example.server.network;
 
+
+import org.example.common.models.StudyGroup;
 import org.example.common.network.Request;
 import org.example.common.network.Response;
-import org.example.common.network.StatusCode;
-import org.example.server.utility.ObjectSerializer;
+import org.example.server.exceptions.ConnectionErrorException;
+import org.example.server.exceptions.OpeningServerException;
+import org.example.server.core.FileManager;
 
-import java.io.IOException;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
-import java.net.SocketException;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.io.*;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.net.SocketTimeoutException;
+import java.nio.ByteBuffer;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
+import java.util.LinkedHashSet;
 
 public class Server {
-    private static final int BUFFER_SIZE = 8192;
+    private int port;
+    private int soTimeout;
+    private Printable console;
+    private ServerSocketChannel ss;
+    private SocketChannel socketChannel;
+    private RequestHandler requestHandler;
+    private LinkedHashSet<StudyGroup> collection;
 
-    private final int port;
-    private final RequestHandler requestHandler;
-    private final Logger logger;
-    private DatagramSocket socket;
-    private volatile boolean running = false;
 
-    public Server(int port, RequestHandler requestHandler, Logger logger) {
+    BufferedInputStream bf = new BufferedInputStream(System.in);
+    BufferedReader scanner = new BufferedReader(new InputStreamReader(bf));
+    private FileManager fileManager;
+
+    public Server(int port, int soTimeout, RequestHandler handler, FileManager fileManager) {
         this.port = port;
-        this.requestHandler = requestHandler;
-        this.logger = logger;
+        this.soTimeout = soTimeout;
+        this.console = new BlankConsole();
+        this.requestHandler = handler;
+        this.fileManager = fileManager;
+        this.collection = fileManager.loadCollection();
     }
 
     public void run() {
         try {
-            socket = new DatagramSocket(port);
-            running = true;
-            logger.info("Server socket created. Listening on UDP port: " + port);
-
-            byte[] receiveBuffer = new byte[BUFFER_SIZE];
-
-            while (running) {
-                DatagramPacket receivePacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
-                InetAddress clientAddress = null;
-                int clientPort = -1;
-
+            openServerSocket();
+            System.out.println("Server socket opened on port " + port);
+            while (true) {
                 try {
-                    logger.log(Level.FINE, "Waiting for next client request...");
-                    socket.receive(receivePacket);
-
-                    if (!running) break;
-
-                    clientAddress = receivePacket.getAddress();
-                    clientPort = receivePacket.getPort();
-                    logger.info("Received packet from " + clientAddress.getHostAddress() + ":" + clientPort + " (" + receivePacket.getLength() + " bytes)");
-
-                    Request request = null;
-                    try {
-                        Object deserializedObject = ObjectSerializer.deserialize(receivePacket.getData(), receivePacket.getLength());
-                        if (deserializedObject instanceof Request) {
-                            request = (Request) deserializedObject;
-                            logger.fine("Deserialized request (Command: " + request.getCommandName() + ")");
-                        } else {
-                            logger.warning("Deserialized object is not a Request from " + clientAddress.getHostAddress());
-                            sendRawResponse(Response.error(StatusCode.ERROR, "Bad request object type."), clientAddress, clientPort);
-                            continue;
+                    if (scanner.ready()) {
+                        String line = scanner.readLine();
+                        if (line.equals("save") || line.equals("s")) {
+                            fileManager.saveCollection(collection);
+                            System.out.println("Collection saved to file");
                         }
-                    } catch (IOException | ClassNotFoundException | RuntimeException e) {
-                        logger.log(Level.WARNING, "Deserialization failed from " + clientAddress.getHostAddress() + ": " + e.getMessage());
-                        sendRawResponse(Response.error(StatusCode.ERROR, "Bad request format/data. Could not deserialize."), clientAddress, clientPort);
-                        continue;
                     }
+                } catch (IOException ignored) {}
 
-                    Response responseObject = requestHandler.handle(request);
-                    sendRawResponse(responseObject, clientAddress, clientPort);
-
-                } catch (SocketException se) {
-                    if (running) {
-                        logger.log(Level.WARNING, "SocketException during receive: " + se.getMessage());
-                    } else {
-                        logger.info("Socket closed while waiting for receive. Server stopping.");
-                    }
-                    running = false;
-                } catch (IOException e) {
-                    logger.log(Level.SEVERE, "Network I/O error in loop: " + e.getMessage(), e);
-                } catch (Exception e) {
-                    logger.log(Level.SEVERE, "Unexpected error handling request from " +
-                            (clientAddress != null ? clientAddress.getHostAddress() : "unknown"), e);
-                    if (clientAddress != null && clientPort != -1 && socket != null && !socket.isClosed()) {
-                        sendRawResponse(Response.error(StatusCode.ERROR_SERVER, "Internal server error occurred."),
-                                clientAddress, clientPort);
-                    }
+                try (SocketChannel clientSocket = connectToClient()) {
+                    if (clientSocket == null) continue;
+                    clientSocket.configureBlocking(false);
+                    if (!processClientRequest(clientSocket)) break;
+                } catch (ConnectionErrorException | SocketTimeoutException ignored) {
+                    // Ignored as per original logic
+                } catch (IOException exception) {
+                    console.printError("Error while closing client connection!");
+                    System.err.println("Error while closing client connection: " + exception.getMessage());
                 }
             }
-        } catch (SocketException e) {
-            logger.log(Level.SEVERE, "FATAL: Could not create or bind server socket on port " + port + ".", e);
-            System.err.println("FATAL ERROR: Could not bind to port " + port + ".");
-        } finally {
-            close();
+            stop();
+            System.out.println("Server stopped");
+        } catch (OpeningServerException e) {
+            console.printError("Server could not be started");
+            System.err.println("Server could not be started");
         }
     }
 
-    private void sendRawResponse(Response responseObject, InetAddress clientAddress, int clientPort) {
-        if (socket == null || socket.isClosed()) {
-            logger.warning("Cannot send response, socket is null or closed.");
-            return;
-        }
+    private void openServerSocket() throws OpeningServerException {
         try {
-            byte[] sendData = ObjectSerializer.serialize(responseObject);
-
-            if (sendData.length > BUFFER_SIZE) {
-                logger.warning("Response size (" + sendData.length + " bytes) exceeds buffer limit. Sending size error response.");
-                Response errorResponse = Response.error(StatusCode.ERROR_SERVER, "Server response data too large (limit: " + BUFFER_SIZE + " bytes).");
-                sendData = ObjectSerializer.serialize(errorResponse);
-                if (sendData.length > BUFFER_SIZE) {
-                    logger.severe("INTERNAL ERROR: Size error response itself is too large. Cannot notify client.");
-                    return;
-                }
-            }
-
-            DatagramPacket sendPacket = new DatagramPacket(sendData, sendData.length, clientAddress, clientPort);
-            socket.send(sendPacket);
-            logger.log(Level.FINE, "Sent response (Status: " + responseObject.getStatusCode() + ") to " + clientAddress.getHostAddress() + ":" + clientPort + " (" + sendData.length + " bytes)");
-        } catch (IOException e) {
-            logger.log(Level.SEVERE, "IOException during response serialization/send to " + clientAddress.getHostAddress(), e);
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "Unexpected error sending response", e);
+            SocketAddress socketAddress = new InetSocketAddress(port);
+            System.out.println("Creating server socket on port " + port);
+            ss = ServerSocketChannel.open();
+            ss.bind(socketAddress);
+            ss.configureBlocking(false);
+            System.out.println("Server socket channel configured (non-blocking)");
+        } catch (IllegalArgumentException exception) {
+            console.printError("Port '" + port + "' is out of valid range!");
+            System.err.println("Port " + port + " is out of valid range");
+            throw new OpeningServerException();
+        } catch (IOException exception) {
+            System.err.println("Error using port " + port + ": " + exception.getMessage());
+            console.printError("Error using port '" + port + "'!");
+            throw new OpeningServerException();
         }
     }
 
-    public void close() {
-        running = false;
-        if (socket != null && !socket.isClosed()) {
-            socket.close();
-            logger.info("Server socket closed.");
+    private SocketChannel connectToClient() throws ConnectionErrorException, SocketTimeoutException {
+        try {
+            socketChannel = ss.accept();
+            if (socketChannel != null) {
+                System.out.println("Client connected: " + socketChannel.getRemoteAddress());
+            }
+            return socketChannel;
+        } catch (SocketTimeoutException exception) {
+            throw new SocketTimeoutException();
+        } catch (IOException exception) {
+            System.err.println("Error connecting to client: " + exception.getMessage());
+            throw new ConnectionErrorException();
+        }
+    }
+
+    private boolean processClientRequest(SocketChannel clientSocket) {
+        Request userRequest = null;
+        Response responseToUser = null;
+        try {
+            Request request = getSocketObjet(clientSocket);
+            System.out.println("Received request: " + request.getCommandName());
+            console.println(request.toString());
+            responseToUser = requestHandler.handle(request);
+            sendSocketObject(clientSocket, responseToUser);
+            System.out.println("Sent response to client");
+        } catch (ClassNotFoundException exception) {
+            console.printError("Error reading incoming data!");
+            System.err.println("Error reading incoming data: " + exception.getMessage());
+        } catch (InvalidClassException | NotSerializableException exception) {
+            console.printError("Error sending data to client!");
+            System.err.println("Error sending data to client: " + exception.getMessage());
+        } catch (IOException exception) {
+            if (userRequest == null) {
+                console.printError("Unexpected client disconnect!");
+                System.err.println("Unexpected client disconnect");
+            } else {
+                console.println("Client disconnected successfully!");
+                System.out.println("Client disconnected successfully");
+            }
+        }
+        return true;
+    }
+
+    public static Request getSocketObjet(SocketChannel channel) throws IOException, ClassNotFoundException {
+        ByteBuffer buffer = ByteBuffer.allocate(1024 * 10);
+        while (true) {
+            try {
+                channel.read(buffer);
+                buffer.mark();
+                byte[] buf = buffer.array();
+                ByteArrayInputStream byteArrayInputStream = new ByteArrayInputStream(buf);
+                ObjectInputStream objectInputStream = new ObjectInputStream(byteArrayInputStream);
+                return (Request) objectInputStream.readObject();
+            } catch (StreamCorruptedException e) {
+                // try again if not enough data
+            }
+        }
+    }
+
+    private static void sendSocketObject(SocketChannel client, Response response) throws IOException {
+        ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+        ObjectOutputStream objectOutputStream = new ObjectOutputStream(byteArrayOutputStream);
+        objectOutputStream.writeObject(response);
+        objectOutputStream.flush();
+        client.write(ByteBuffer.wrap(byteArrayOutputStream.toByteArray()));
+    }
+
+    private void stop() {
+        class ClosingSocketException extends Exception {}
+        try {
+            if (socketChannel == null) throw new ClosingSocketException();
+            socketChannel.close();
+            ss.close();
+            System.out.println("All connections closed");
+        } catch (ClosingSocketException exception) {
+            console.printError("Cannot stop server that was not started!");
+            System.err.println("Cannot stop server that was not started!");
+        } catch (IOException exception) {
+            console.printError("Error while stopping server!");
+            System.err.println("Error while stopping server: " + exception.getMessage());
         }
     }
 }

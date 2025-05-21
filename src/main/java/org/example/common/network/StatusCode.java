@@ -19,5 +19,9 @@ public enum StatusCode implements Serializable {
     /** The command name sent by the client is not recognized by the server. */
     ERROR_UNKNOWN_COMMAND,
     /** The command sent is recognized but should be handled client-side (e.g., history, exit). */
-    ERROR_CLIENT_COMMAND
+    ERROR_CLIENT_COMMAND,
+    WRONG_ARGUMENTS,
+    EXIT,
+    EXECUTE_SCRIPT,
+    ASK_OBJECT
 }

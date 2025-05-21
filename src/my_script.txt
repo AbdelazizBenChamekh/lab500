@@ -1,5 +1,3 @@
-# My example script for Study Group Manager
-
 info
 update 1
 remove_by_id 2

@@ -5,30 +5,48 @@ import org.example.common.network.Request;
 import org.example.common.network.Response;
 import org.example.common.network.StatusCode;
 import org.example.server.core.CollectionManager;
+import org.example.server.exceptions.CommandRuntimeError;
+import org.example.server.exceptions.ExitObliged;
+import org.example.server.exceptions.IllegalArguments;
+
 import java.util.logging.Level;
 import java.util.logging.Logger;
+/**
+ * 'RemoveLower' command
+ * Removes lower part.
+ */
 
-public class ServerRemoveLowerCommand implements ServerCommand {
+public class ServerRemoveLowerCommand extends Command {
+
+    private final CollectionManager collectionManager;
+    private final Logger logger;
+
+    public ServerRemoveLowerCommand(CollectionManager collectionManager, Logger logger) {
+        super("remove_lower", "Removes all elements smaller than the provided one");
+        this.collectionManager = collectionManager;
+        this.logger = logger;
+    }
+
     @Override
-    public Response execute(Request request, CollectionManager collectionManager, Logger logger) {
-        logger.log(Level.FINE, "Executing 'remove_lower' command.");
-        Object argument = request.getArgument();
+    public Response execute(Request request) throws CommandRuntimeError, ExitObliged, IllegalArguments {
+        logger.log(Level.INFO, "Executing 'remove_lower' command.");
 
-        if (!(argument instanceof StudyGroup)) {
-            logger.log(Level.WARNING, "Invalid argument type for 'remove_lower'. Expected StudyGroup.");
-            return Response.error(StatusCode.ERROR, "Argument must be a StudyGroup object for 'remove_lower'.");
+        StudyGroup thresholdGroup = request.getObject();
+        if (thresholdGroup == null) {
+            logger.log(Level.WARNING, "No StudyGroup object provided in request.");
+            throw new IllegalArguments("StudyGroup object is required for 'remove_lower'.");
         }
-        StudyGroup thresholdGroup = (StudyGroup) argument;
 
         try {
             long removedCount = collectionManager.removeLower(thresholdGroup);
-            return Response.success("Removed " + removedCount + " elements smaller than the provided threshold.");
+            logger.log(Level.INFO, "Removed " + removedCount + " elements smaller than the threshold.");
+            return new Response(StatusCode.OK, "Removed " + removedCount + " elements smaller than the provided threshold.");
         } catch (IllegalArgumentException e) {
             logger.log(Level.WARNING, "Validation error during 'remove_lower': " + e.getMessage());
-            return Response.error(StatusCode.ERROR, "Invalid data for threshold element: " + e.getMessage());
+            throw new CommandRuntimeError("Invalid data for threshold element: " + e.getMessage());
         } catch (Exception e) {
             logger.log(Level.SEVERE, "Error executing 'remove_lower': " + e.getMessage(), e);
-            return Response.error(StatusCode.ERROR_SERVER, "Internal server error during remove_lower.");
+            throw new CommandRuntimeError("Internal server error during remove_lower.");
         }
     }
 }

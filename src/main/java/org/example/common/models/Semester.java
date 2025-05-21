@@ -10,4 +10,6 @@ public enum Semester implements Serializable {
     FIRST,
     FOURTH,
     SEVENTH;
+
+
 }

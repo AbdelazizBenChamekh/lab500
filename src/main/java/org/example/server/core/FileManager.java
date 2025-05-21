@@ -1,16 +1,16 @@
 package org.example.server.core;
 
-import org.example.common.models.*;
+import org.example.common.models.StudyGroup;
+import org.example.server.exceptions.ExitObliged;
 
 import java.io.*;
-import java.time.LocalDate;
-import java.time.format.DateTimeParseException;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+/**
+ * FileManager using Java built-in serialization to save/load collection.
+ */
 public class FileManager {
     private final String filePath;
     private final Logger logger;
@@ -25,120 +25,99 @@ public class FileManager {
 
     private void logError(String message, Exception e) {
         if (logger != null) logger.log(Level.SEVERE, message, e);
-        else { System.err.println("FM_ERROR: " + message + (e != null ? " - " + e.getMessage() : "")); if (e != null) e.printStackTrace(System.err); }
+        else {
+            System.err.println("FM_ERROR: " + message + (e != null ? " - " + e.getMessage() : ""));
+            if (e != null) e.printStackTrace(System.err);
+        }
     }
-    private void logError(String message) { logError(message, null); }
-    private void logInfo(String message) { if (logger != null) logger.info(message); else System.out.println("FM_INFO: " + message); }
-    private void logWarning(String message) { if (logger != null) logger.warning(message); else System.err.println("FM_WARN: " + message); }
 
+    private void logInfo(String message) {
+        if (logger != null) logger.info(message);
+        else System.out.println("FM_INFO: " + message);
+    }
+
+    /**
+     * Saves the collection to a file using Java serialization.
+     */
     public void saveCollection(LinkedHashSet<StudyGroup> collection) {
         if (filePath == null) {
-            logError("Cannot save: No file path specified.");
+            logError("Cannot save: No file path specified.", null);
             return;
         }
-        File file = new File(filePath);
-        try (PrintWriter writer = new PrintWriter(new FileWriter(file))) {
-            for (StudyGroup group : collection) {
-                writer.println(group.toCsv());
-            }
+        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(filePath))) {
+            oos.writeObject(collection);
             logInfo("Collection saved successfully to " + filePath);
         } catch (IOException e) {
             logError("Could not write to file '" + filePath + "'", e);
-        } catch (SecurityException e) {
-            logError("Permission denied writing to file '" + filePath + "'", e);
         }
     }
 
-    public LinkedHashSet<StudyGroup> loadCollection() {
-        LinkedHashSet<StudyGroup> collection = new LinkedHashSet<>();
-        HashSet<Integer> loadedIds = new HashSet<>();
-
-        if (filePath == null) {
-            logWarning("Cannot load: No file path specified. Starting empty collection.");
-            IdGenerator.initialize(Collections.emptySet());
-            return collection;
+    /**
+     * Checks if the file exists and is accessible.
+     * Throws ExitObliged if file is not accessible.
+     */
+    public void findFile() throws ExitObliged {
+        if (filePath == null || filePath.isEmpty()) {
+            logError("File path is not specified.", null);
+            throw new ExitObliged();
         }
+
         File file = new File(filePath);
         if (!file.exists()) {
-            logInfo("Data file not found: '" + filePath + "'. Starting empty collection.");
-            IdGenerator.initialize(Collections.emptySet());
-            return collection;
+            logInfo("Data file does not exist at " + filePath + ". It will be created on save.");
+        } else if (!file.isFile()) {
+            logError("Path exists but is not a file: " + filePath, null);
+            throw new ExitObliged();
+        } else if (!file.canRead()) {
+            logError("File exists but cannot be read: " + filePath, null);
+            throw new ExitObliged();
+        } else {
+            logInfo("Data file found and readable: " + filePath);
         }
-        if (!file.isFile()){
-            logError("Path is a directory, not a file: '" + filePath + "'. Starting empty.");
-            IdGenerator.initialize(Collections.emptySet());
-            return collection;
+    }
+
+    /**
+     * Loads the collection from file or initializes empty collection.
+     * Throws ExitObliged if loading fails critically.
+     */
+    public void createObjects() throws ExitObliged {
+        LinkedHashSet<StudyGroup> loadedCollection = loadCollection();
+        if (loadedCollection.isEmpty()) {
+            logInfo("Starting with an empty collection.");
+        } else {
+            logInfo("Loaded collection with " + loadedCollection.size() + " elements.");
         }
-        if (!file.canRead()) {
-            logError("Cannot read data file: '" + filePath + "'. Starting empty.");
-            IdGenerator.initialize(Collections.emptySet());
-            return collection;
+        // You may want to store this collection in a field or pass it back as needed
+    }
+
+    /**
+     * Loads the collection from a file using Java serialization.
+     * Returns empty collection if file not found or error occurs.
+     */
+    @SuppressWarnings("unchecked")
+    public LinkedHashSet<StudyGroup> loadCollection() {
+        if (filePath == null) {
+            logError("Cannot load: No file path specified.", null);
+            return new LinkedHashSet<>();
+        }
+        File file = new File(filePath);
+        if (!file.exists() || !file.isFile() || !file.canRead()) {
+            logInfo("Data file not found or unreadable: '" + filePath + "'. Starting with empty collection.");
+            return new LinkedHashSet<>();
         }
 
-        logInfo("Loading collection from " + filePath + "...");
-        int lineNumber = 0;
-        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                lineNumber++;
-                String trimmedLine = line.trim();
-                if (trimmedLine.isEmpty()) continue;
-
-                String[] data = trimmedLine.split(",");
-                final int EXPECTED_FIELDS = 17;
-
-                if (data.length != EXPECTED_FIELDS) {
-                    logWarning("Skipping line " + lineNumber + ": Incorrect number of fields (expected " + EXPECTED_FIELDS + ", found " + data.length + ")");
-                    continue;
-                }
-                try {
-                    int id = Integer.parseInt(data[0].trim());
-                    if (id <= 0) throw new IllegalArgumentException("ID must be positive");
-                    if (!loadedIds.add(id)) throw new IllegalArgumentException("Duplicate ID found: " + id);
-                    String name = data[1];
-                    int coordX = Integer.parseInt(data[2].trim());
-                    int coordY = Integer.parseInt(data[3].trim());
-                    Coordinates coords = new Coordinates(coordX, coordY);
-                    LocalDate creationDate = LocalDate.parse(data[4].trim());
-                    long studentsCount = Long.parseLong(data[5].trim());
-                    String expelledStr = data[6].trim();
-                    Long shouldBeExpelled = expelledStr.isEmpty() ? null : Long.parseLong(expelledStr);
-                    FormOfEducation form = FormOfEducation.valueOf(data[7].trim().toUpperCase());
-                    String semesterStr = data[8].trim();
-                    Semester semester = semesterStr.isEmpty() ? null : Semester.valueOf(semesterStr.toUpperCase());
-                    String adminName = data[9];
-                    int adminWeight = Integer.parseInt(data[10].trim());
-                    String eyeColorStr = data[11].trim();
-                    Color eyeColor = eyeColorStr.isEmpty() ? null : Color.valueOf(eyeColorStr.toUpperCase());
-                    Color hairColor = Color.valueOf(data[12].trim().toUpperCase());
-                    String nationStr = data[13].trim();
-                    Country nationality = nationStr.isEmpty() ? null : Country.valueOf(nationStr.toUpperCase());
-                    int locX = Integer.parseInt(data[14].trim());
-                    double locY = Double.parseDouble(data[15].trim());
-                    String locNameStr = data[16];
-                    String locName = locNameStr.isEmpty() ? null : locNameStr;
-                    Location location = new Location(locX, locY, locName);
-                    Person admin = new Person(adminName, adminWeight, eyeColor, hairColor, nationality, location);
-                    StudyGroup group = new StudyGroup(id, name, coords, creationDate, studentsCount, shouldBeExpelled, form, semester, admin);
-                    collection.add(group);
-                } catch (DateTimeParseException e) {
-                    logWarning("Skipping line " + lineNumber + ": Invalid date format. " + e.getMessage());
-                } catch (NumberFormatException e) {
-                    logWarning("Skipping line " + lineNumber + ": Invalid number format. " + e.getMessage());
-                } catch (IllegalArgumentException e) {
-                    logWarning("Skipping line " + lineNumber + ": Invalid data. " + e.getMessage());
-                } catch (Exception e) {
-                    logError("Skipping line " + lineNumber + ": Unexpected error.", e);
-                }
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(file))) {
+            Object obj = ois.readObject();
+            if (obj instanceof LinkedHashSet) {
+                logInfo("Collection loaded successfully from " + filePath);
+                return (LinkedHashSet<StudyGroup>) obj;
+            } else {
+                logError("File content is not a valid collection. Starting empty.", null);
+                return new LinkedHashSet<>();
             }
-            logInfo("Loaded " + collection.size() + " elements.");
-        } catch (IOException e) {
+        } catch (IOException | ClassNotFoundException e) {
             logError("Error reading file '" + filePath + "'", e);
-            collection.clear();
-            loadedIds.clear();
-        } finally {
-            IdGenerator.initialize(loadedIds);
+            return new LinkedHashSet<>();
         }
-        return collection;
     }
 }
