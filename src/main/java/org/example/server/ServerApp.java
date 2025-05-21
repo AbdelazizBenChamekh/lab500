@@ -8,14 +8,13 @@ import org.example.server.commands.*;
 
 import java.util.List;
 import java.util.logging.Logger;
+
 /**
  * Main Server App
  */
 public class ServerApp extends Thread {
     public static int PORT = 12345;
-    public static final int CONNECTION_TIMEOUT = 60 * 1000;
     private static final Printable console = new BlankConsole();
-
     private static final Logger logger = Logger.getLogger(ServerApp.class.getName());
 
     public static void main(String[] args) {
@@ -67,8 +66,9 @@ public class ServerApp extends Thread {
         logger.info("Command manager created.");
         RequestHandler requestHandler = new RequestHandler(commandManager);
         logger.info("Request handler created.");
-        Server server = new Server(PORT, CONNECTION_TIMEOUT, requestHandler, fileManager);
+        Server server = new Server(PORT, requestHandler, fileManager);
         logger.info("Server object created.");
         server.run();
-    }}
+    }
+}
 

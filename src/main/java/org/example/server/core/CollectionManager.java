@@ -4,7 +4,6 @@ import org.example.common.models.FormOfEducation;
 import org.example.common.models.Person;
 import org.example.server.exceptions.InvalidForm;
 import org.example.common.models.StudyGroup;
-
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -26,7 +25,6 @@ public class CollectionManager {
      * Last modification date of the collection
      */
     private LocalDateTime lastSaveTime;
-
     private static final Logger collectionManagerLogger = Logger.getLogger(CollectionManager.class.getName());
 
     public CollectionManager() {
@@ -144,6 +142,7 @@ public class CollectionManager {
         return collection.stream()
                 .anyMatch((x) -> x.getId() == id);
     }
+
     /**
      * Adds the given StudyGroup to the collection if it is less than the current minimum element.
      * @param candidate the StudyGroup to add
@@ -154,21 +153,17 @@ public class CollectionManager {
         if (candidate == null) {
             throw new IllegalArgumentException("Candidate StudyGroup cannot be null");
         }
-
         if (collection.isEmpty()) {
             addElement(candidate);
             return true;
         }
-
         StudyGroup minElement = collection.stream()
                 .min(StudyGroup::compareTo)  // assumes StudyGroup implements Comparable<StudyGroup>
                 .orElse(null);
-
         if (minElement == null || candidate.compareTo(minElement) < 0) {
             addElement(candidate);
             return true;
         }
-
         return false;
     }
 
@@ -182,17 +177,13 @@ public class CollectionManager {
         if (threshold == null) {
             throw new IllegalArgumentException("Threshold StudyGroup cannot be null");
         }
-
         long initialSize = collection.size();
         collection.removeIf(element -> element.compareTo(threshold) < 0);
         long removedCount = initialSize - collection.size();
-
         collectionManagerLogger.info("Removed " + removedCount + " elements smaller than threshold: " + threshold);
         lastSaveTime = LocalDateTime.now();
-
         return removedCount;
     }
-
 
     public void addElement(StudyGroup studyGroup) {
         this.lastSaveTime = LocalDateTime.now();
@@ -210,11 +201,20 @@ public class CollectionManager {
                 .collect(Collectors.toList());
     }
 
+    // new method here!
+    /**
+     * @return all elements sorted by size
+     */
+    public List<StudyGroup> getAllGroupsSortedBySize() {
+        return collection.stream()
+                .sorted(Comparator.comparingLong(StudyGroup::getStudentsCount))
+                .collect(Collectors.toList());
+    }
+
     public boolean removeAnyByFormOfEducation(FormOfEducation form) {
         Optional<StudyGroup> toRemove = collection.stream()
                 .filter(sg -> sg.getFormOfEducation() == form)
                 .findFirst();
-
         if (toRemove.isPresent()) {
             collection.remove(toRemove.get());
             return true;
@@ -229,14 +229,10 @@ public class CollectionManager {
                 .collect(Collectors.toList());
     }
 
-
-
-
     @Override
     public String toString() {
         if (collection.isEmpty()) return "The collection is empty!";
         var last = getLast();
-
         StringBuilder info = new StringBuilder();
         for (StudyGroup studyGroup : collection) {
             info.append(studyGroup);

@@ -40,11 +40,12 @@ public class RuntimeManager {
      */
     public void interactiveMode(){
         while (true) {
-            try{
+            try {
                 if (!userScanner.hasNext()) throw new ExitObliged();
-                String[] userCommand = (userScanner.nextLine().trim() + " ").split(" ", 2); // прибавляем пробел, чтобы split выдал два элемента в массиве
+                String[] userCommand = (userScanner.nextLine().trim() + " ").split(" ", 2);
                 Response response = client.sendAndAskResponse(new Request(userCommand[0].trim(), userCommand[1].trim()));
                 this.printResponse(response);
+
                 switch (response.getStatus()){
                     case ASK_OBJECT -> {
                         StudyGroup studyGroup = new StudyGroupForm(console).build();
@@ -76,6 +77,9 @@ public class RuntimeManager {
             } catch (ExitObliged exitObliged){
                 console.println(ConsoleColors.toColor("До свидания!", ConsoleColors.YELLOW));
                 return;
+            } catch (IOException | ClassNotFoundException e) {
+                console.printError("Ошибка связи с сервером: " + e.getMessage());
+                // Optionally, add retry logic or break here
             }
         }
     }
@@ -83,7 +87,7 @@ public class RuntimeManager {
     private void printResponse(Response response){
         switch (response.getStatus()){
             case OK -> {
-                if ((Objects.isNull(response.getCollection()))) {
+                if (Objects.isNull(response.getCollection())) {
                     console.println(response.getResponse());
                 } else {
                     console.println(response.getResponse() + "\n" + response.getCollection().toString());
@@ -150,8 +154,8 @@ public class RuntimeManager {
             ExecuteFileManager.popFile();
         } catch (FileNotFoundException fileNotFoundException){
             console.printError("Такого файла не существует");
-        } catch (IOException e) {
-            console.printError("Ошибка ввода вывода");
+        } catch (IOException | ClassNotFoundException e) {
+            console.printError("Ошибка связи с сервером: " + e.getMessage());
         }
     }
 }
