@@ -10,8 +10,8 @@ import org.example.common.models.StudyGroup;
 import java.util.Collection;
 
 /**
- * 'show' command
- * Prints all elements of the collection to standard output in string form
+ * Команда 'show'
+ *  Выводит в стандартный поток вывода все элементы коллекции в строковом представлении
  */
 public class ServerShowCommand extends Command{
     private CollectionManager collectionManager;
@@ -22,9 +22,9 @@ public class ServerShowCommand extends Command{
     }
 
     /**
-     * Execute command
-     * @param request command arguments
-     * @throws IllegalArguments invalid command arguments
+     * Исполнить команду
+     * @param request аргументы команды
+     * @throws IllegalArguments неверные аргументы команды
      */
     @Override
     public Response execute(Request request) throws IllegalArguments {

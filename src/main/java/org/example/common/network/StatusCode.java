@@ -23,5 +23,8 @@ public enum StatusCode implements Serializable {
     WRONG_ARGUMENTS,
     EXIT,
     EXECUTE_SCRIPT,
-    ASK_OBJECT
+    ASK_OBJECT,
+    LOGIN_FAILED,
+    ERROR_AUTHENTICATION,
+    ERROR_USER_EXISTS
 }

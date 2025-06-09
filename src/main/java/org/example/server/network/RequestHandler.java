@@ -1,35 +1,68 @@
 package org.example.server.network;
-
 import org.example.common.network.Request;
 import org.example.common.network.Response;
 import org.example.common.network.StatusCode;
+import org.example.server.core.CommandManager;
 import org.example.server.exceptions.CommandRuntimeError;
 import org.example.server.exceptions.ExitObliged;
 import org.example.server.exceptions.IllegalArguments;
 import org.example.server.exceptions.NoSuchCommand;
-import org.example.server.core.CommandManager;
 
-public class RequestHandler {
-    private CommandManager commandManager;
+import java.io.ByteArrayOutputStream;
+import java.io.ObjectOutputStream;
+import java.net.SocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.DatagramChannel;
+import java.util.concurrent.Callable;
 
-    public RequestHandler(CommandManager commandManager) {
+public class RequestHandler implements Callable<Response> {
+    private final CommandManager commandManager;
+    private final Request request;
+    private final DatagramChannel channel;
+    private final SocketAddress clientAddress;
+
+    public RequestHandler(CommandManager commandManager, Request request, DatagramChannel channel, SocketAddress clientAddress) {
         this.commandManager = commandManager;
+        this.request = request;
+        this.channel = channel;
+        this.clientAddress = clientAddress;
     }
 
-    public Response handle(Request request) {
+    @Override
+    public Response call() {
+        Response response;
         try {
-            commandManager.addToHistory(request.getCommandName());
-            return commandManager.execute(request);
+            commandManager.addToHistory(String.valueOf(request.getUser()), request.getCommandName());
+            response = commandManager.execute(request);
         } catch (IllegalArguments e) {
-            return new Response(StatusCode.WRONG_ARGUMENTS,
-                    "Неверное использование аргументов команды");
+            response = new Response(StatusCode.WRONG_ARGUMENTS, "Неверное использование аргументов команды");
         } catch (CommandRuntimeError e) {
-            return new Response(StatusCode.ERROR,
-                    "Ошибка при исполнении программы");
+            response = new Response(StatusCode.ERROR, "Ошибка при исполнении программы");
         } catch (NoSuchCommand e) {
-            return new Response(StatusCode.ERROR, "Такой команды нет в списке");
+            response = new Response(StatusCode.ERROR, "Такой команды нет в списке");
         } catch (ExitObliged e) {
-            return new Response(StatusCode.EXIT);
+            response = new Response(StatusCode.EXIT);
+        }
+
+        sendResponse(response);
+        return response;
+    }
+
+    private void sendResponse(Response response) {
+        try {
+            ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+            ObjectOutputStream objectOut = new ObjectOutputStream(byteStream);
+            objectOut.writeObject(response);
+            objectOut.flush();
+
+            byte[] data = byteStream.toByteArray();
+            ByteBuffer buffer = ByteBuffer.wrap(data);
+
+            channel.send(buffer, clientAddress);
+        } catch (Exception e) {
+            System.err.println("Ошибка при отправке ответа клиенту: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 }
+

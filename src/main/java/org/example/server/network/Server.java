@@ -2,105 +2,100 @@ package org.example.server.network;
 
 import org.example.common.network.Request;
 import org.example.common.network.Response;
-import org.example.server.core.FileManager;
-import org.example.server.exceptions.OpeningServerException;
-import org.example.client.commandLine.Printable;
-import org.example.client.commandLine.BlankConsole;
+import org.example.common.network.StatusCode;
+import org.example.server.ServerApp;
+
+import org.example.server.core.CommandManager;
+import org.example.server.core.DatabaseManager;
 
 import java.io.*;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.DatagramChannel;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class Server {
-    private final int port;
-    private final Printable console;
-    private final FileManager fileManager;
-    private final RequestHandler requestHandler;
-    private DatagramSocket socket;
-    private volatile boolean running = false;
-    private static final int BUFFER_SIZE = 65536; // 64 KB buffer for UDP packets
+    private static final Logger logger = Logger.getLogger(Server.class.getName());
 
-    public Server(int port, RequestHandler handler, FileManager fileManager) {
-        this.port = port;
-        this.console = new BlankConsole();
-        this.requestHandler = handler;
-        this.fileManager = fileManager;
+    private final int port;
+    private final CommandManager commandManager;
+    private final DatabaseManager databaseManager;
+    private DatagramChannel channel;
+    private final ExecutorService executor = Executors.newCachedThreadPool();
+
+    public Server(CommandManager commandManager, DatabaseManager databaseManager) {
+        this.port = ServerApp.PORT;
+        this.commandManager = commandManager;
+        this.databaseManager = databaseManager;
     }
 
     public void run() {
         try {
-            openSocket();
-            console.println("UDP server started on port " + port);
-            running = true;
+            channel = DatagramChannel.open();
+            channel.bind(new InetSocketAddress(port));
+            channel.configureBlocking(true);
 
-            while (running) {
-                byte[] receiveBuffer = new byte[BUFFER_SIZE];
-                DatagramPacket receivePacket = new DatagramPacket(receiveBuffer, receiveBuffer.length);
-                socket.receive(receivePacket); // blocking call
+            logger.info("UDP сервер (DatagramChannel) запущен на порту " + port);
 
-                // Deserialize request
-                Request request = deserializeRequest(receivePacket.getData(), receivePacket.getLength());
-                console.println("Received request: " + (request != null ? request.getCommandName() : "null"));
+            while (true) {
+                ByteBuffer buffer = ByteBuffer.allocate(65535); // Buffer for receiving data
+                SocketAddress clientAddress = channel.receive(buffer);
 
-                // Handle request
-                Response response = requestHandler.handle(request);
+                if (clientAddress != null) {
+                    buffer.flip();
+                    byte[] data = new byte[buffer.remaining()];
+                    buffer.get(data);
 
-                // Serialize response
-                byte[] responseBytes = serializeResponse(response);
-
-                // Send response back to client
-                DatagramPacket sendPacket = new DatagramPacket(
-                        responseBytes,
-                        responseBytes.length,
-                        receivePacket.getAddress(),
-                        receivePacket.getPort()
-                );
-                socket.send(sendPacket);
-                console.println("Sent response to client " + receivePacket.getAddress() + ":" + receivePacket.getPort());
+                    executor.submit(() -> handleRequest(data, clientAddress));
+                }
             }
+
         } catch (IOException e) {
-            console.printError("IO error in server: " + e.getMessage());
-            e.printStackTrace();
-        } catch (OpeningServerException e) {
-            throw new RuntimeException(e);
+            logger.log(Level.SEVERE, "Не удалось запустить сервер: " + e.getMessage(), e);
         } finally {
-            stop();
+            if (channel != null && channel.isOpen()) {
+                try {
+                    channel.close();
+                } catch (IOException e) {
+                    logger.log(Level.WARNING, "Ошибка при закрытии DatagramChannel: " + e.getMessage(), e);
+                }
+            }
         }
     }
 
-    private void openSocket() throws OpeningServerException {
+    private void handleRequest(byte[] data, SocketAddress clientAddress) {
+        try (ByteArrayInputStream byteStream = new ByteArrayInputStream(data);
+             ObjectInputStream objectInput = new ObjectInputStream(byteStream)) {
+
+            Request request = (Request) objectInput.readObject();
+
+            RequestHandler handler = new RequestHandler(commandManager, request, channel, clientAddress);
+            handler.call(); // Sends response internally
+
+        } catch (IOException | ClassNotFoundException e) {
+            logger.log(Level.WARNING, "Ошибка при обработке запроса: " + e.getMessage(), e);
+            sendErrorResponse(clientAddress, "Ошибка при обработке запроса: " + e.getMessage());
+        }
+    }
+
+    private void sendErrorResponse(SocketAddress address, String message) {
         try {
-            socket = new DatagramSocket(port);
-            socket.setSoTimeout(0); // infinite timeout, can be adjusted
+            Response response = new Response(StatusCode.ERROR, message);
+            ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+            ObjectOutputStream objectOutput = new ObjectOutputStream(byteStream);
+            objectOutput.writeObject(response);
+            objectOutput.flush();
+
+            byte[] respBytes = byteStream.toByteArray();
+            ByteBuffer buffer = ByteBuffer.wrap(respBytes);
+
+            channel.send(buffer, address);
         } catch (IOException e) {
-            console.printError("Could not open UDP socket on port " + port);
-            throw new OpeningServerException();
+            logger.log(Level.WARNING, "Ошибка при отправке сообщения об ошибке клиенту: " + e.getMessage(), e);
         }
-    }
-
-    private Request deserializeRequest(byte[] data, int length) throws IOException {
-        try (ByteArrayInputStream bais = new ByteArrayInputStream(data, 0, length);
-             ObjectInputStream ois = new ObjectInputStream(bais)) {
-            return (Request) ois.readObject();
-        } catch (ClassNotFoundException e) {
-            throw new IOException("Failed to deserialize Request object", e);
-        }
-    }
-
-    private byte[] serializeResponse(Response response) throws IOException {
-        try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
-             ObjectOutputStream oos = new ObjectOutputStream(baos)) {
-            oos.writeObject(response);
-            oos.flush();
-            return baos.toByteArray();
-        }
-    }
-
-    public void stop() {
-        running = false;
-        if (socket != null && !socket.isClosed()) {
-            socket.close();
-        }
-        console.println("Server stopped");
     }
 }

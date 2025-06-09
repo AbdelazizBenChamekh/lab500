@@ -4,8 +4,6 @@ import org.example.common.network.Request;
 import org.example.common.network.Response;
 import org.example.common.network.StatusCode;
 import org.example.client.commandLine.Printable;
-import org.example.common.utility.ConsoleColors;
-
 import java.io.*;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -76,7 +74,6 @@ public class Client {
 
                     if (fromAddress != null && fromAddress.equals(serverAddress)) {
                         Response response = deserialize(receiveBuffer);
-                        closeChannel();
                         reconnectionAttempts = 0;
                         return response;
                     }
@@ -91,14 +88,17 @@ public class Client {
     }
 
     private void openChannel() throws IOException {
-        if (channel != null && channel.isOpen()) {
-            return; // already open
-        }
+        if (channel != null && channel.isOpen()) return;
+
         channel = DatagramChannel.open();
         channel.configureBlocking(false);
+
+        channel.bind(new InetSocketAddress(0));
         selector = Selector.open();
         channel.register(selector, SelectionKey.OP_READ);
     }
+
+
 
     private void closeChannel() throws IOException {
         if (channel != null) {

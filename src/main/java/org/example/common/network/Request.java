@@ -1,35 +1,33 @@
 package org.example.common.network;
-import java.io.Serializable;
+
 import org.example.common.models.StudyGroup;
 
 import java.io.Serializable;
 import java.util.Objects;
 
 public class Request implements Serializable {
-    private static final long serialVersionUID = 1L;
-
-    private String commandName;
+    private final String commandName;
     private String args = "";
     private StudyGroup object = null;
+    private User user;
 
-    public Request(StatusCode ok, String commandName, StudyGroup help) {
-        this.commandName = commandName.trim();
-    }
-
-    public Request(String commandName, String args) {
+    public Request(String commandName, String args, User user) {
         this.commandName = commandName.trim();
         this.args = args;
+        this.user = user;
     }
 
-    public Request(String commandName, StudyGroup object) {
+    public Request(String commandName, User user, StudyGroup object) {
         this.commandName = commandName.trim();
         this.object = object;
+        this.user = user;
     }
 
-    public Request(String commandName, String args, StudyGroup object) {
+    public Request(String commandName, String args, User user, StudyGroup object) {
         this.commandName = commandName.trim();
         this.args = args.trim();
         this.object = object;
+        this.user = user;
     }
 
     public boolean isEmpty() {
@@ -48,6 +46,10 @@ public class Request implements Serializable {
         return object;
     }
 
+    public User getUser() {
+        return user;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -57,12 +59,12 @@ public class Request implements Serializable {
 
     @Override
     public int hashCode() {
-        return Objects.hash(commandName, args, object);
+        return Objects.hash(commandName, args, object, user);
     }
 
     @Override
     public String toString(){
-        return "Request[" + commandName +
+        return "Request[" + commandName + ',' + user +
                 (args.isEmpty()
                         ? ""
                         : "," + args ) +

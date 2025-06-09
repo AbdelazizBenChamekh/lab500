@@ -2,58 +2,191 @@ package org.example.server.core;
 
 import org.example.common.models.FormOfEducation;
 import org.example.common.models.Person;
-import org.example.server.exceptions.InvalidForm;
 import org.example.common.models.StudyGroup;
+import org.example.common.network.User;
+import org.example.server.exceptions.InvalidForm;
+
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-/**
- * Class that manages the collection.
- */
 public class CollectionManager {
     private final ArrayDeque<StudyGroup> collection = new ArrayDeque<>();
-    private static int nextId = 0;
-    /**
-     * Collection creation date
-     */
-    private LocalDateTime lastInitTime;
-    /**
-     * Last modification date of the collection
-     */
+    private DatabaseManager databaseManager;
+    private final ConcurrentHashMap<Integer, StudyGroup> collectionCache;
+    private final LocalDateTime initializationTime;
+    LocalDateTime lastInitTime;
+    private Logger logger;
+    private ReadWriteLock lock = new ReentrantReadWriteLock();
+    Lock writeLock = lock.writeLock();
+    Lock readLock = lock.readLock();
     private LocalDateTime lastSaveTime;
-    private static final Logger collectionManagerLogger = Logger.getLogger(CollectionManager.class.getName());
 
-    public CollectionManager() {
-        this.lastInitTime = LocalDateTime.now();
-        this.lastSaveTime = null;
+    public CollectionManager(DatabaseManager databaseManager) {
+        this.logger = Logger.getLogger(CollectionManager.class.getName());
+        this.databaseManager = databaseManager;
+        this.initializationTime = LocalDateTime.now();
+        this.collectionCache = new ConcurrentHashMap<>();
+        logger.info("CollectionManager initialized. Initial cache size: " + this.collectionCache.size());
     }
 
+    public String getInfo() {
+        String initTimeFormatted = (initializationTime != null)
+                ? initializationTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
+                : "N/A";
+
+        return "Server Collection Information:\n" +
+                "  In-Memory Cache Type: " + collectionCache.getClass().getSimpleName() + "\n" +
+                "  Elements in Cache: " + collectionCache.size() + "\n" +
+                "  Cache Initialization Time: " + initTimeFormatted + "\n" +
+                "  Primary Data Store: PostgreSQL Database\n" +
+                "  Note: Cache is updated upon successful database modifications.";
+    }
     public ArrayDeque<StudyGroup> getCollection() {
-        return collection;
+        try {
+            readLock.lock();
+            return collection;
+        } finally {
+            readLock.unlock();
+        }
     }
 
-    public static void updateId(Collection<StudyGroup> collection) {
-        nextId = collection.stream()
+    public void addElement(StudyGroup studyGroup) throws InvalidForm{
+        this.lastSaveTime = LocalDateTime.now();
+        if (!studyGroup.validate()) throw new InvalidForm("Количество студентов должно быть положительным");
+        collection.add(studyGroup);
+    }
+
+
+    public void removeElements(Collection<StudyGroup> collection) {
+        try {
+            writeLock.lock();
+            this.collection.removeAll(collection);
+        } finally {
+            writeLock.unlock();
+        }
+    }
+
+    public List<StudyGroup> getAllGroupsSortedById() {
+        logger.fine("CM: Getting all groups sorted by ID from local cache.");
+        if (collectionCache.isEmpty()) return Collections.emptyList();
+        return collectionCache.values().stream()
+                .sorted()
+                .collect(Collectors.toList());
+    }
+
+    public StudyGroup getById(int id) {
+        logger.fine("CM: Getting group by ID " + id + " from local cache.");
+        return collectionCache.get(id);
+    }
+
+    public List<Person> getSortedGroupAdmins() {
+        logger.fine("CM: Getting sorted group admins from local cache.");
+        if (collectionCache.isEmpty()) return Collections.emptyList();
+        return collectionCache.values().stream()
+                .map(StudyGroup::getGroupAdmin)
                 .filter(Objects::nonNull)
-                .map(StudyGroup::getId)
-                .max(Integer::compareTo)
-                .orElse(0);
-        collectionManagerLogger.info("ID updated to " + nextId);
+                .sorted()
+                .collect(Collectors.toList());
     }
 
-    public static int getNextId() {
-        return ++nextId;
+    public boolean addIfMin(StudyGroup candidate, User user) throws InvalidForm {
+        logger.info("CM: addIfMin called by user " + user.getLogin());
+
+        // Validate candidate first
+        if (!candidate.validate()) {
+            throw new InvalidForm("StudyGroup validation failed.");
+        }
+
+        writeLock.lock();
+        try {
+            if (collectionCache.isEmpty()) {
+                // No elements yet, just add
+                candidate.setOwnerLogin(String.valueOf(user.getLogin()));  // Set ownership
+                int generatedId = databaseManager.addObject(candidate, user.getLogin());
+                if (generatedId != -1) {
+                    candidate.setId(generatedId);
+                    collectionCache.put(generatedId, candidate);
+                    collection.add(candidate);
+                    logger.info("CM: addIfMin - Added first element to empty collection for user " + user.getLogin());
+                    return true;
+                } else {
+                    logger.warning("CM: addIfMin - DB insert failed for user " + user.getLogin());
+                    return false;
+                }
+            } else {
+                // Find current minimum element in cache
+                Optional<StudyGroup> minElementOpt = collectionCache.values().stream()
+                        .min(StudyGroup::compareTo);
+
+                if (minElementOpt.isPresent() && candidate.compareTo(minElementOpt.get()) < 0) {
+                    candidate.setOwnerLogin(String.valueOf(user.getLogin()));  // Set ownership
+                    int generatedId = databaseManager.addObject(candidate, user.getLogin());
+                    if (generatedId != -1) {
+                        candidate.setId(generatedId);
+                        collectionCache.put(generatedId, candidate);
+                        collection.add(candidate);
+                        logger.info("CM: addIfMin - Candidate added as it is less than current min for user " + user.getLogin());
+                        return true;
+                    } else {
+                        logger.warning("CM: addIfMin - DB insert failed for user " + user.getLogin());
+                        return false;
+                    }
+                } else {
+                    logger.info("CM: addIfMin - Candidate not less than current min for user " + user.getLogin());
+                    return false;
+                }
+            }
+        } finally {
+            writeLock.unlock();
+        }
     }
 
-    /**
-     * Formats the date, hiding the date if it's today
-     * @param localDateTime LocalDateTime object
-     * @return formatted date string
-     */
+
+    public long removeLower(StudyGroup thresholdFromClient, User user) {
+        logger.info("CM: RemoveLower for user " + user.getLogin());
+        logger.warning("CM: RemoveLower - Current implementation is cache-first and needs DB-level atomic operation with ownership.");
+
+        List<StudyGroup> toRemoveFromCache = collectionCache.values().stream()
+                .filter(group -> group.getOwnerLogin() != null && group.getOwnerLogin().equals(user.getLogin()))
+                .filter(group -> group.compareTo(thresholdFromClient) < 0)
+                .collect(Collectors.toList());
+
+        if (toRemoveFromCache.isEmpty()) {
+            logger.info("CM: RemoveLower - No elements owned by user " + user.getLogin() + " found smaller than threshold in cache.");
+            return 0;
+        }
+
+        long removedCountDB = 0;
+        for (StudyGroup group : toRemoveFromCache) {
+            if (databaseManager.deleteObject(group.getId(), user.getLogin())) {
+                collectionCache.remove(group.getId());
+                removedCountDB++;
+            } else {
+                logger.warning("CM: RemoveLower - Failed to delete group ID " + group.getId() + " from DB (not owned or other DB error).");
+
+            }
+        }
+        logger.info("CM: RemoveLower - Successfully removed " + removedCountDB + " elements from DB and cache for user " + user.getLogin());
+        return removedCountDB;
+    }
+
+    public boolean checkExist(int id) {
+        try {
+            readLock.lock();
+            return collection.stream()
+                    .anyMatch((x) -> x.getId() == id);
+        } finally {
+            readLock.unlock();
+        }
+    }
+
     public static String timeFormatter(LocalDateTime localDateTime) {
         if (localDateTime == null) return null;
         if (localDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
@@ -63,181 +196,88 @@ public class CollectionManager {
         return localDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
     }
 
-    /**
-     * Formats the date, hiding the date if it's today
-     * @param dateToConvert Date object
-     * @return formatted date string
-     */
-    public static String timeFormatter(Date dateToConvert) {
-        LocalDateTime localDateTime = dateToConvert.toInstant()
-                .atZone(ZoneId.systemDefault())
-                .toLocalDateTime();
-        if (localDateTime == null) return null;
-        if (localDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
-                .equals(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")))) {
-            return localDateTime.format(DateTimeFormatter.ofPattern("HH:mm:ss"));
-        }
-        return localDateTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-    }
-
     public String getLastInitTime() {
-        return timeFormatter(lastInitTime);
+        try {
+            readLock.lock();
+            return timeFormatter(lastInitTime);
+        } finally {
+            readLock.unlock();
+        }
     }
 
-    public String getLastSaveTime() {
-        return timeFormatter(lastSaveTime);
+    public void editById(int id, StudyGroup newElement) {
+        try {
+            writeLock.lock();
+            StudyGroup pastElement = this.getById(id);
+            this.removeElement(pastElement);
+            newElement.setId(id);
+            this.addElement(newElement);
+            logger.info("Объект с айди " + id + " изменен");
+        } catch (InvalidForm e) {
+            throw new RuntimeException(e);
+        } finally {
+            writeLock.unlock();
+        }
     }
 
-    /**
-     * @return The type name of the collection.
-     */
     public String collectionType() {
-        return collection.getClass().getName();
+        try {
+            readLock.lock();
+            return collection.getClass().getName();
+        } finally {
+            readLock.unlock();
+        }
     }
 
     public int collectionSize() {
-        return collection.size();
-    }
-
-    public void clear() {
-        this.collection.clear();
-        lastInitTime = LocalDateTime.now();
-        collectionManagerLogger.info("Collection cleared");
-    }
-
-    public StudyGroup getLast() {
-        return collection.getLast();
-    }
-
-    /**
-     * @param id Element ID.
-     * @return The element by its ID, or null if not found.
-     */
-    public StudyGroup getById(int id) {
-        for (StudyGroup element : collection) {
-            if (element.getId() == id) return element;
+        try {
+            readLock.lock();
+            return collection.size();
+        } finally {
+            readLock.unlock();
         }
-        return null;
     }
 
-    /**
-     * Edit the collection element with the given id
-     * @param id id
-     * @param newElement new element
-     * @throws InvalidForm No element with such id
-     */
-    public void editById(int id, StudyGroup newElement) {
-        StudyGroup pastElement = this.getById(id);
-        this.removeElement(pastElement);
-        newElement.setId(id);
-        this.addElement(newElement);
-        collectionManagerLogger.info("Object with id " + id + " edited: " + newElement);
-    }
-
-    /**
-     * @param id Element ID.
-     * @return Checks if an element with such ID exists.
-     */
-    public boolean checkExist(int id) {
-        return collection.stream()
-                .anyMatch((x) -> x.getId() == id);
-    }
-
-    /**
-     * Adds the given StudyGroup to the collection if it is less than the current minimum element.
-     * @param candidate the StudyGroup to add
-     * @return true if the element was added, false otherwise
-     * @throws IllegalArgumentException if candidate is null
-     */
-    public boolean addIfMin(StudyGroup candidate) {
-        if (candidate == null) {
-            throw new IllegalArgumentException("Candidate StudyGroup cannot be null");
+    public String getLastSaveTime() {
+        try {
+            readLock.lock();
+            return timeFormatter(lastSaveTime);
+        } finally {
+            readLock.unlock();
         }
-        if (collection.isEmpty()) {
-            addElement(candidate);
-            return true;
-        }
-        StudyGroup minElement = collection.stream()
-                .min(StudyGroup::compareTo)  // assumes StudyGroup implements Comparable<StudyGroup>
-                .orElse(null);
-        if (minElement == null || candidate.compareTo(minElement) < 0) {
-            addElement(candidate);
-            return true;
-        }
-        return false;
     }
 
-    /**
-     * Removes all elements smaller than the given threshold.
-     * @param threshold the StudyGroup threshold
-     * @return the number of elements removed
-     * @throws IllegalArgumentException if threshold is null
-     */
-    public long removeLower(StudyGroup threshold) {
-        if (threshold == null) {
-            throw new IllegalArgumentException("Threshold StudyGroup cannot be null");
-        }
-        long initialSize = collection.size();
-        collection.removeIf(element -> element.compareTo(threshold) < 0);
-        long removedCount = initialSize - collection.size();
-        collectionManagerLogger.info("Removed " + removedCount + " elements smaller than threshold: " + threshold);
-        lastSaveTime = LocalDateTime.now();
-        return removedCount;
-    }
+    public boolean removeAnyByFormOfEducation(FormOfEducation form, User user) {
+        logger.info("CM: RemoveAnyByForm for user " + user.getLogin() + " and form " + form);
+        Optional<StudyGroup> candidateToRemoveOpt = collectionCache.values().stream()
+                .filter(sg -> sg.getOwnerLogin() != null && sg.getOwnerLogin().equals(user.getLogin()))
+                .filter(sg -> sg.getFormOfEducation() == form)
+                .findFirst();
 
-    public void addElement(StudyGroup studyGroup) {
-        this.lastSaveTime = LocalDateTime.now();
-        collection.add(studyGroup);
-        collectionManagerLogger.info("Object added to collection: " + studyGroup);
+        if (candidateToRemoveOpt.isPresent()) {
+            StudyGroup groupToRemove = candidateToRemoveOpt.get();
+            logger.info("CM: RemoveAnyByForm - Candidate ID " + groupToRemove.getId() + " found in cache. Attempting DB delete.");
+            boolean success = databaseManager.deleteObject(groupToRemove.getId(), user.getLogin());
+            if (success) {
+                collectionCache.remove(groupToRemove.getId());
+                logger.info("CM: RemoveAnyByForm - Successfully removed group ID " + groupToRemove.getId() + " from DB and cache.");
+                return true;
+            } else {
+                logger.warning("CM: RemoveAnyByForm - DB delete failed for group ID " + groupToRemove.getId());
+                return false;
+            }
+        } else {
+            logger.info("CM: RemoveAnyByForm - No element with form " + form + " owned by user " + user.getLogin() + " found in cache.");
+            return false;
+        }
     }
 
     public void removeElement(StudyGroup studyGroup) {
-        collection.remove(studyGroup);
-    }
-
-    public List<StudyGroup> getAllGroupsSortedById() {
-        return collection.stream()
-                .sorted(Comparator.comparingInt(StudyGroup::getId))
-                .collect(Collectors.toList());
-    }
-
-    // new method here!
-    /**
-     * @return all elements sorted by size
-     */
-    public List<StudyGroup> getAllGroupsSortedBySize() {
-        return collection.stream()
-                .sorted(Comparator.comparingLong(StudyGroup::getStudentsCount))
-                .collect(Collectors.toList());
-    }
-
-    public boolean removeAnyByFormOfEducation(FormOfEducation form) {
-        Optional<StudyGroup> toRemove = collection.stream()
-                .filter(sg -> sg.getFormOfEducation() == form)
-                .findFirst();
-        if (toRemove.isPresent()) {
-            collection.remove(toRemove.get());
-            return true;
+        try {
+            writeLock.lock();
+            collection.remove(studyGroup);
+        } finally {
+            writeLock.unlock();
         }
-        return false;
-    }
-
-    public List<Person> getSortedGroupAdmins() {
-        return collection.stream()
-                .map(StudyGroup::getGroupAdmin)
-                .sorted(Comparator.comparing(Person::getName)) // or another field if needed
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    public String toString() {
-        if (collection.isEmpty()) return "The collection is empty!";
-        var last = getLast();
-        StringBuilder info = new StringBuilder();
-        for (StudyGroup studyGroup : collection) {
-            info.append(studyGroup);
-            if (studyGroup != last) info.append("\n\n");
-        }
-        return info.toString();
     }
 }

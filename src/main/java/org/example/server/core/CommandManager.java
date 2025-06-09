@@ -1,19 +1,14 @@
 package org.example.server.core;
 
-import org.example.common.models.StudyGroup;
-import org.example.server.commands.CollectionEditor;
+import org.example.common.network.StatusCode;
+import org.example.common.network.User;
 import org.example.server.commands.Command;
 import org.example.common.network.Request;
 import org.example.common.network.Response;
-import org.example.server.exceptions.CommandRuntimeError;
-import org.example.server.exceptions.ExitObliged;
-import org.example.server.exceptions.IllegalArguments;
-import org.example.server.exceptions.NoSuchCommand;
+import org.example.server.exceptions.*;
 
 import java.util.*;
 import java.util.logging.Logger;
-import java.util.stream.Collectors;
-
 
 /**
  * Command manager.
@@ -23,44 +18,50 @@ public class CommandManager {
     /**
      * Stores commands as Name-Command pairs.
      */
-    private final HashMap<String, Command> commands = new HashMap<>();
+    private final Map<String, Command> commands = new HashMap<>();
     /**
      * Stores the command history.
      */
     private final List<String> commandHistory = new ArrayList<>();
-    private final FileManager fileManager;
-    private LinkedHashSet<StudyGroup> collection;
+    private final DatabaseManager databaseManager;
 
-    private static final Logger commandManagerLogger = Logger.getLogger(CommandManager.class.getName());
+    private static final Logger logger = Logger.getLogger(CommandManager.class.getName());
 
-    public CommandManager(FileManager fileManager) {
-        this.fileManager = fileManager;
-        this.collection = fileManager.loadCollection();
+    public CommandManager(DatabaseManager databaseManager) {
+        this.databaseManager = databaseManager;
     }
 
+    /**
+     * Registers a single command.
+     */
     public void addCommand(Command command) {
         this.commands.put(command.getName(), command);
-        commandManagerLogger.info("Command added: " + command.getName());
+        logger.info("Command added: " + command.getName());
     }
 
+    /**
+     * Registers multiple commands.
+     */
     public void addCommand(Collection<Command> commands) {
-        this.commands.putAll(commands.stream()
-                .collect(Collectors.toMap(Command::getName, s -> s)));
-        commandManagerLogger.info("Commands added: " + commands.stream().map(Command::getName).collect(Collectors.joining(", ")));
+        for (Command command : commands) {
+            addCommand(command);
+        }
     }
 
     public Collection<Command> getCommands() {
         return commands.values();
     }
 
-    public void addToHistory(String line) {
-        if (line.isBlank()) return;
-        this.commandHistory.add(line);
-        commandManagerLogger.info("Added to history: " + line);
+    public void addToHistory(String userLogin, String commandName) {
+        if (commandName == null || commandName.isBlank()) return;
+        String entry = userLogin + ": " + commandName;
+        this.commandHistory.add(entry);
+        logger.info("Added to history: " + entry);
     }
 
-    public List<String> getCommandHistory() {
-        return commandHistory;
+
+    public List<String> getCommandHistory(User user) {
+        return new ArrayList<>(commandHistory);
     }
 
     /**
@@ -74,16 +75,16 @@ public class CommandManager {
     public Response execute(Request request) throws NoSuchCommand, IllegalArguments, CommandRuntimeError, ExitObliged {
         Command command = commands.get(request.getCommandName());
         if (command == null) {
-            commandManagerLogger.severe("No such command: " + request.getCommandName());
+            logger.severe("No such command: " + request.getCommandName());
             throw new NoSuchCommand();
         }
-        Response response = command.execute(request);
-        commandManagerLogger.info("Executed command: " + command.getName() + ", Response: " + response);
-        if (command instanceof CollectionEditor) {
-            commandManagerLogger.info("File updated after executing a collection editor command.");
-            fileManager.saveCollection(collection);
+
+        try {
+            return command.execute(request);
+        } catch (InvalidForm e) {
+            logger.warning("Invalid form received for command: " + command.getName());
+            return new Response(StatusCode.ERROR, "Ошибка: введены некорректные данные формы. " + e.getMessage());
         }
-        return response;
-    }
-}
+}}
+
 

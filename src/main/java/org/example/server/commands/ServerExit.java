@@ -10,14 +10,14 @@ import org.example.server.exceptions.IllegalArguments;
  * Command 'exit'
  * terminate the program (without saving to file)
  */
-public class ServerExit extends Command {
+public class ServerExit extends Command  {
     public ServerExit(){
         super("exit", ": завершить программу (без сохранения в файл)");
     }
 
     /**
      * Execute command
-     * @param args command arguments
+     * @param request command arguments
      * @throws ExitObliged program exit is needed
      */
     @Override

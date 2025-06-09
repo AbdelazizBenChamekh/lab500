@@ -1,16 +1,16 @@
 package org.example.server.commands;
-
 import org.example.common.network.Request;
 import org.example.common.network.Response;
 import org.example.common.network.StatusCode;
 import org.example.server.exceptions.IllegalArguments;
 import org.example.server.core.CollectionManager;
+import org.example.server.network.DatabaseHandler;
 
 import java.util.Objects;
 
 /**
- * Command 'update'
- * Updates the value of the collection element whose id is equal to the specified one
+ * Команда 'update'
+ * Обновляет значение элемента коллекции, id которого равен заданному
  */
 public class ServerUpdateCommand extends Command implements CollectionEditor{
     private final CollectionManager collectionManager;
@@ -21,9 +21,9 @@ public class ServerUpdateCommand extends Command implements CollectionEditor{
     }
 
     /**
-     * Execute command
-     * @param request command arguments
-     * @throws IllegalArguments invalid command arguments
+     * Исполнить команду
+     * @param request аргументы команды
+     * @throws IllegalArguments неверные аргументы команды
      */
     @Override
     public Response execute(Request request) throws IllegalArguments{
@@ -37,8 +37,11 @@ public class ServerUpdateCommand extends Command implements CollectionEditor{
             if (Objects.isNull(request.getObject())){
                 return new Response(StatusCode.ASK_OBJECT, "Для команды " + this.getName() + " требуется объект");
             }
-            collectionManager.editById(id, request.getObject());
-            return new Response(StatusCode.OK, "Объект успешно обновлен");
+            if(DatabaseHandler.getDatabaseManager().updateObject(id, request.getObject(), request.getUser())){
+                collectionManager.editById(id, request.getObject());
+                return new Response(StatusCode.OK, "Объект успешно обновлен");
+            }
+            return new Response(StatusCode.ERROR, "Объект не обновлен. Вероятнее всего он не ваш");
         } catch (NoSuchId err) {
             return new Response(StatusCode.ERROR,"В коллекции нет элемента с таким id");
         } catch (NumberFormatException exception) {

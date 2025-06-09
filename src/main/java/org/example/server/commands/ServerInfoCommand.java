@@ -3,13 +3,14 @@ package org.example.server.commands;
 import org.example.common.network.Request;
 import org.example.common.network.Response;
 import org.example.common.network.StatusCode;
-import org.example.server.exceptions.IllegalArguments;
-import org.example.server.core.CollectionManager;
 import org.example.common.utility.ConsoleColors;
+import org.example.server.core.CollectionManager;
+import org.example.server.exceptions.IllegalArguments;
+
 
 /**
- * 'info' command
- * Outputs information about the collection (type, initialization date, number of elements, etc.) to the standard output stream.
+ * Команда 'info'
+ * Выводит в стандартный поток вывода информацию о коллекции (тип, дата инициализации, количество элементов и т.д.)
  */
 public class ServerInfoCommand extends Command{
     private CollectionManager collectionManager;
@@ -20,9 +21,9 @@ public class ServerInfoCommand extends Command{
     }
 
     /**
-     * Execute command
-     * @param request command arguments
-     * @throws IllegalArguments invalid command arguments
+     * Исполнить команду
+     * @param request аргументы команды
+     * @throws IllegalArguments неверные аргументы команды
      */
     @Override
     public Response execute(Request request) throws IllegalArguments {

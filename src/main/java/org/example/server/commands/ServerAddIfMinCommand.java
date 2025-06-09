@@ -1,57 +1,49 @@
 package org.example.server.commands;
 
-import org.example.common.models.StudyGroup;
 import org.example.common.network.Request;
 import org.example.common.network.Response;
 import org.example.common.network.StatusCode;
+import org.example.common.models.StudyGroup;
+import org.example.common.network.User;
 import org.example.server.core.CollectionManager;
-import org.example.server.exceptions.CommandRuntimeError;
-import org.example.server.exceptions.ExitObliged;
-import org.example.server.exceptions.IllegalArguments;
 
 import java.util.logging.Level;
 import java.util.logging.Logger;
-/**
- * 'addIfMinimum' command
- * Adds a new element to the collection
- */
 
 public class ServerAddIfMinCommand extends Command {
-
     private final CollectionManager collectionManager;
-    private final Logger logger;
+    private static final Logger logger = Logger.getLogger(ServerAddIfMinCommand.class.getName());
 
-    public ServerAddIfMinCommand(CollectionManager collectionManager, Logger logger) {
-        super("add_if_min", "Adds a new element if it is less than the current minimum");
+    public ServerAddIfMinCommand(CollectionManager collectionManager) {
+        super("add_if_min", "добавить элемент, если он меньше минимального");
         this.collectionManager = collectionManager;
-        this.logger = logger;
     }
 
     @Override
-    public Response execute(Request request) throws CommandRuntimeError, ExitObliged, IllegalArguments {
-        logger.log(Level.INFO, "Executing 'add_if_min' command.");
+    public Response execute(Request request) {
+        StudyGroup groupCandidate = request.getObject();
+        User authenticatedUser = request.getUser();
 
-        StudyGroup groupToAdd = request.getObject();
-        if (groupToAdd == null) {
-            logger.log(Level.WARNING, "No StudyGroup object provided in request.");
-            throw new IllegalArguments("StudyGroup object is required for 'add_if_min'.");
+        if (groupCandidate == null) {
+            return new Response(StatusCode.WRONG_ARGUMENTS, "Объект StudyGroup обязателен.");
+        }
+
+        if (authenticatedUser == null) {
+            return new Response(StatusCode.ERROR_AUTHENTICATION, "Требуется аутентификация пользователя.");
         }
 
         try {
-            boolean added = collectionManager.addIfMin(groupToAdd);
+            boolean added = collectionManager.addIfMin(groupCandidate, authenticatedUser);
+
             if (added) {
-                logger.log(Level.INFO, "Element added successfully.");
-                return new Response(StatusCode.OK, "Element added successfully (collection was empty or element was smaller).");
+                return new Response(StatusCode.OK, "Элемент добавлен, так как он меньше минимального.");
             } else {
-                logger.log(Level.INFO, "Element not added (not smaller than current minimum).");
-                return new Response(StatusCode.OK, "Element not added (not smaller than current minimum).");
+                return new Response(StatusCode.OK, "Элемент не добавлен, так как он не меньше минимального.");
             }
-        } catch (IllegalArgumentException e) {
-            logger.log(Level.WARNING, "Validation error: " + e.getMessage());
-            throw new CommandRuntimeError("Invalid data for candidate element: " + e.getMessage());
         } catch (Exception e) {
-            logger.log(Level.SEVERE, "Error executing 'add_if_min': " + e.getMessage(), e);
-            throw new CommandRuntimeError("Internal server error during add_if_min.");
+            logger.log(Level.SEVERE, "Ошибка при выполнении add_if_min", e);
+            return new Response(StatusCode.ERROR_SERVER, "Ошибка сервера при выполнении add_if_min.");
         }
     }
 }
+

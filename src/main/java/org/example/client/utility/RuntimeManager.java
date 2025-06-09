@@ -1,16 +1,19 @@
 package org.example.client.utility;
 
 import org.example.client.commandLine.Console;
-import org.example.common.utility.ConsoleColors;
 import org.example.client.commandLine.Printable;
 import org.example.client.commandLine.forms.StudyGroupForm;
+import org.example.client.commandLine.forms.UserForm;
 import org.example.common.network.Request;
 import org.example.common.network.Response;
 import org.example.common.network.StatusCode;
+import org.example.common.network.User;
 import org.example.client.Exception.ExceptionInFileMode;
 import org.example.client.Exception.ExitObliged;
 import org.example.client.Exception.InvalidForm;
+import org.example.client.Exception.LoginDuringExecuteFail;
 import org.example.common.models.StudyGroup;
+import org.example.common.utility.ConsoleColors;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -19,15 +22,14 @@ import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Scanner;
 
-import static org.example.common.network.StatusCode.*;
-
 /**
- * User Input Handling Class
+ * Класс обработки пользовательского ввода
  */
 public class RuntimeManager {
     private final Printable console;
     private final Scanner userScanner;
     private final Client client;
+    private User user = null;
 
     public RuntimeManager(Printable console, Scanner userScanner, Client client) {
         this.console = console;
@@ -36,16 +38,35 @@ public class RuntimeManager {
     }
 
     /**
-     * Permanent work with the user and execution of commands
+     * Перманентная работа с пользователем и выполнение команд
      */
     public void interactiveMode(){
         while (true) {
-            try {
+            try{
+                if (Objects.isNull(user)) {
+                    Response response = null;
+                    boolean isLogin = true;
+                    do {
+                        if(!Objects.isNull(response)) {
+                            console.println( (isLogin)
+                                    ? "Такой связки логин-пароль нет, попробуйте снова"
+                                    : "Этот логин уже занят, попробуйте снова!");
+                        }
+                        UserForm userForm = new UserForm(console);
+                        isLogin = userForm.askIfLogin();
+                        user = new UserForm(console).build();
+                        if (isLogin) {
+                            response = client.sendAndAskResponse(new Request("ping", "", user));
+                        } else {
+                            response = client.sendAndAskResponse(new Request("register", "", user));
+                        }
+                    } while (response.getStatus() != StatusCode.OK);
+                    console.println("Вы успешно зашли в аккаунт");
+                }
                 if (!userScanner.hasNext()) throw new ExitObliged();
-                String[] userCommand = (userScanner.nextLine().trim() + " ").split(" ", 2);
-                Response response = client.sendAndAskResponse(new Request(userCommand[0].trim(), userCommand[1].trim()));
+                String[] userCommand = (userScanner.nextLine().trim() + " ").split(" ", 2); // прибавляем пробел, чтобы split выдал два элемента в массиве
+                Response response = client.sendAndAskResponse(new Request(userCommand[0].trim(), userCommand[1].trim(), user));
                 this.printResponse(response);
-
                 switch (response.getStatus()){
                     case ASK_OBJECT -> {
                         StudyGroup studyGroup = new StudyGroupForm(console).build();
@@ -54,8 +75,9 @@ public class RuntimeManager {
                                 new Request(
                                         userCommand[0].trim(),
                                         userCommand[1].trim(),
+                                        user,
                                         studyGroup));
-                        if (newResponse.getStatus() != OK){
+                        if (newResponse.getStatus() != StatusCode.OK){
                             console.printError(newResponse.getResponse());
                         }
                         else {
@@ -68,18 +90,27 @@ public class RuntimeManager {
                         this.fileExecution(response.getResponse());
                         Console.setFileMode(false);
                     }
+                    case LOGIN_FAILED -> {
+                        console.printError("Ошибка с вашим аккаунтом. Зайдите в него снова");
+                        this.user = null;
+                    }
                     default -> {}
                 }
             } catch (InvalidForm err){
                 console.printError("Поля не валидны! Объект не создан");
             } catch (NoSuchElementException exception) {
                 console.printError("Пользовательский ввод не обнаружен!");
+                console.println(ConsoleColors.toColor("До свидания!", ConsoleColors.YELLOW));
+                return;
             } catch (ExitObliged exitObliged){
                 console.println(ConsoleColors.toColor("До свидания!", ConsoleColors.YELLOW));
                 return;
-            } catch (IOException | ClassNotFoundException e) {
-                console.printError("Ошибка связи с сервером: " + e.getMessage());
-                // Optionally, add retry logic or break here
+            } catch (LoginDuringExecuteFail e) {
+                console.printError("Во время исполнения скрипта произошла ошибка с вашим аккаунтом. Пожалуйста, войдите в него снова");
+            } catch (ClassNotFoundException e) {
+                throw new RuntimeException(e);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
             }
         }
     }
@@ -87,7 +118,7 @@ public class RuntimeManager {
     private void printResponse(Response response){
         switch (response.getStatus()){
             case OK -> {
-                if (Objects.isNull(response.getCollection())) {
+                if ((Objects.isNull(response.getCollection()))) {
                     console.println(response.getResponse());
                 } else {
                     console.println(response.getResponse() + "\n" + response.getCollection().toString());
@@ -99,7 +130,7 @@ public class RuntimeManager {
         }
     }
 
-    private void fileExecution(String args) throws ExitObliged{
+    private void fileExecution(String args) throws ExitObliged, LoginDuringExecuteFail {
         if (args == null || args.isEmpty()) {
             console.printError("Путь не распознан");
             return;
@@ -119,7 +150,7 @@ public class RuntimeManager {
                     }
                 }
                 console.println(ConsoleColors.toColor("Выполнение команды " + userCommand[0], ConsoleColors.YELLOW));
-                Response response = client.sendAndAskResponse(new Request(userCommand[0].trim(), userCommand[1].trim()));
+                Response response = client.sendAndAskResponse(new Request(userCommand[0].trim(), userCommand[1].trim(), user));
                 this.printResponse(response);
                 switch (response.getStatus()){
                     case ASK_OBJECT -> {
@@ -135,6 +166,7 @@ public class RuntimeManager {
                                 new Request(
                                         userCommand[0].trim(),
                                         userCommand[1].trim(),
+                                        user,
                                         studyGroup));
                         if (newResponse.getStatus() != StatusCode.OK){
                             console.printError(newResponse.getResponse());
@@ -148,14 +180,21 @@ public class RuntimeManager {
                         this.fileExecution(response.getResponse());
                         ExecuteFileManager.popRecursion();
                     }
+                    case LOGIN_FAILED -> {
+                        console.printError("Ошибка с вашим аккаунтом. Зайдите в него снова");
+                        this.user = null;
+                        throw new LoginDuringExecuteFail();
+                    }
                     default -> {}
                 }
             }
             ExecuteFileManager.popFile();
         } catch (FileNotFoundException fileNotFoundException){
             console.printError("Такого файла не существует");
-        } catch (IOException | ClassNotFoundException e) {
-            console.printError("Ошибка связи с сервером: " + e.getMessage());
+        } catch (IOException e) {
+            console.printError("Ошибка ввода вывода");
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException(e);
         }
     }
 }

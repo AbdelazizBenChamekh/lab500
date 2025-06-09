@@ -37,10 +37,11 @@ public class Location implements Serializable {
 
     /**
      * Gets the Y coordinate.
+     *
      * @return The Y coordinate.
      */
-    public double getY() {
-        return y; }
+    public long getY() {
+        return (long) y; }
 
     /**
      * Gets the location name.

@@ -5,10 +5,11 @@ import org.example.common.network.Response;
 import org.example.server.exceptions.CommandRuntimeError;
 import org.example.server.exceptions.ExitObliged;
 import org.example.server.exceptions.IllegalArguments;
+import org.example.server.exceptions.InvalidForm;
 
 /**
  * Interface for executable commands
  */
 public interface Executable {
-    Response execute(Request request) throws CommandRuntimeError, ExitObliged, IllegalArguments;
+    Response execute(Request request) throws CommandRuntimeError, ExitObliged, IllegalArguments, InvalidForm;
 }
