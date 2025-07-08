@@ -59,3 +59,23 @@ You can connect locally or via SSH tunnel from a machine outside the database ho
 ```bash
 # Example SSH Tunnel
 ssh -L 5432:pg:5432 s408076@helios.cs.ifmo.ru
+```
+
+
+🔄 Multithreading & Concurrency
+ExecutorService (cached thread pool) handles I/O tasks (receiving requests)
+
+- ForkJoinPool used to process each command asynchronously
+
+- FutureManager tracks long-running tasks and matches results to clients
+
+- Thread-safe communication using synchronized, volatile, and concurrent collections
+
+⚙️ How It Works
+git clone https://github.com/AbdelazizBenChamekh/lab500.git
+cd lab500
+java -jar server.jar
+
+
+
+
